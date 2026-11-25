@@ -2114,6 +2114,8 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     @State private var customerSearchQuery: String = ""
     @State private var customerSearchResults: [AdminHotelCustomerOption] = []
     @State private var selectedCustomer: AdminHotelCustomerOption? = nil
+    @State private var selectedPOSRecord: POSCustomerRecord? = nil
+    @State private var showsPOSCustomerPicker: Bool = false
     @State private var customerPets: [AdminHotelCustomerPetOption] = []
     @State private var selectedCustomerPetID: String? = nil
     @State private var isSearchingCustomers: Bool = false
@@ -2281,6 +2283,15 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         .onAppear {
             if selectedTypeId.isEmpty {
                 selectedTypeId = viewModel.accommodationTypes.first?.id ?? ""
+            }
+        }
+        .sheet(isPresented: $showsPOSCustomerPicker) {
+            POSCustomerPickerSheet(
+                currentSelected: selectedPOSRecord,
+                canCreateCustomer: true,
+                purpose: .hotelReservation
+            ) { chosenRecord in
+                applyPOSCustomer(chosenRecord)
             }
         }
     }
@@ -2516,289 +2527,317 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         )
     }
 
-    // MARK: - Section 1: Customer Profile Card
+    // MARK: - Section 1: Customer Profile Card (Next Gen V10 Redesign)
 
     private var customerProfileCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header: Icon + Title + Subtitle + Verified/Walk-in Pill
             HStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(AdminSurface.primary.opacity(0.12))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [AdminSurface.primary.opacity(0.18), Color(red: 0.85, green: 0.20, blue: 0.40).opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(AdminSurface.primary)
                 }
 
-                Text(Language.get("Customer_Details", alter: "بيانات العميل"))
-                    .font(PPBrandFont.bold(size: 15))
-                    .foregroundStyle(AdminSurface.primaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Customer_Details", alter: "بيانات المالك والعميل"))
+                        .font(PPBrandFont.bold(size: 15.5))
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(Language.get("Customer_Details_Sub", alter: "الربط بالسجل الموحد للعملاء وإدارة ملف النزيل"))
+                        .font(PPBrandFont.regular(size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
 
                 Spacer()
 
                 if selectedCustomer != nil {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11))
-                        Text(Language.get("Hotel_Customer_VerifiedProfile", alter: "عميل مسجل ومعتمد"))
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Hotel_Customer_VerifiedProfile", alter: "ملف موثق ومربوط"))
                             .font(PPBrandFont.bold(size: 11))
                     }
                     .foregroundStyle(Color(uiColor: .systemGreen))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
                     .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
-                } else if !customerName.isEmpty && !customerPhone.isEmpty {
-                    Text(Language.get("Hotel_Customer_WalkInBadge", alter: "عميل مباشر (حضور شخصي)"))
-                        .font(PPBrandFont.bold(size: 11))
-                        .foregroundStyle(Color.orange)
+                    .overlay(Capsule().stroke(Color(uiColor: .systemGreen).opacity(0.3), lineWidth: 0.8))
+                } else {
+                    Text(Language.get("Hotel_Customer_RequiredBadge", alter: "مطلوب تحديد المالك"))
+                        .font(PPBrandFont.medium(size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.orange.opacity(0.12), in: Capsule())
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.control, in: Capsule())
                 }
             }
 
-            // Quick Customer Search / Autocomplete Bar
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AdminSurface.secondaryText)
+            if let selected = selectedCustomer {
+                // ==========================================
+                // STATE A: SOVEREIGN OWNER PASSPORT PILL
+                // ==========================================
+                VStack(spacing: 12) {
+                    // Passport Main Row
+                    HStack(spacing: 12) {
+                        // Monogram Deck with Glowing Verified Seal
+                        ZStack(alignment: .bottomTrailing) {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 52, height: 52)
+                                .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
 
-                    TextField(Language.get("Hotel_SearchCustomerPlaceholder", alter: "ابحث بالاسم أو رقم الهاتف..."), text: $customerSearchQuery)
-                        .font(PPBrandFont.medium(size: 13))
-                        .multilineTextAlignment(.leading)
-                        .onChange(of: customerSearchQuery) { query in
-                            performCustomerSearch(query)
-                        }
+                            Text(String(selected.name.prefix(2)).uppercased())
+                                .font(PPBrandFont.bold(size: 19))
+                                .foregroundStyle(.white)
+                                .frame(width: 52, height: 52)
 
-                    if isSearchingCustomers {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                    } else if !customerSearchQuery.isEmpty {
-                        Button {
-                            customerSearchQuery = ""
-                            customerSearchResults = []
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 14))
-                                .foregroundStyle(AdminSurface.secondaryText)
+                                .foregroundStyle(Color(uiColor: .systemGreen))
+                                .background(Color.white, in: Circle())
+                                .offset(x: 2, y: 2)
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(10)
-                .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
-                )
 
-                // Search Results Dropdown List
-                if !customerSearchResults.isEmpty {
-                    VStack(spacing: 6) {
-                        ForEach(customerSearchResults) { option in
-                            Button {
-                                selectCustomer(option)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(AdminSurface.primary.opacity(0.12))
-                                            .frame(width: 32, height: 32)
-                                        Text(String(option.name.prefix(1)).uppercased())
-                                            .font(PPBrandFont.bold(size: 13))
-                                            .foregroundStyle(AdminSurface.primary)
-                                    }
+                        // Owner Name & Phone details
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(selected.name)
+                                    .font(PPBrandFont.bold(size: 15))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .lineLimit(1)
 
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(option.name)
-                                            .font(PPBrandFont.bold(size: 13))
-                                            .foregroundStyle(AdminSurface.primaryText)
-                                        if !option.phone.isEmpty {
-                                            Text(option.phone)
-                                                .font(PPBrandFont.medium(size: 11))
-                                                .foregroundStyle(AdminSurface.secondaryText)
-                                                .monospacedDigit()
-                                        }
-                                    }
-
-                                    Spacer()
-
-                                    Text(Language.get("Hotel_Select_Action", alter: "اختيار"))
-                                        .font(PPBrandFont.bold(size: 11))
-                                        .foregroundStyle(AdminSurface.primary)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(AdminSurface.primary.opacity(0.1), in: Capsule())
-                                }
-                                .padding(8)
-                                .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Text("POS")
+                                    .font(PPBrandFont.bold(size: 9))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(AdminSurface.primary.opacity(0.1), in: Capsule())
                             }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(8)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
 
-                // If customer is selected: Selected Profile Banner
-                if let selected = selectedCustomer {
-                    HStack(spacing: 10) {
-                        Image(systemName: "person.badge.shield.checkmark.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color(uiColor: .systemGreen))
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(selected.name)
-                                .font(PPBrandFont.bold(size: 13))
-                                .foregroundStyle(AdminSurface.primaryText)
                             if !selected.phone.isEmpty {
-                                Text(selected.phone)
-                                    .font(PPBrandFont.regular(size: 11))
-                                    .foregroundStyle(AdminSurface.secondaryText)
+                                HStack(spacing: 4) {
+                                    Text(customerCountryFlag)
+                                        .font(.system(size: 12))
+                                    Text(selected.phone)
+                                        .font(PPBrandFont.medium(size: 12.5))
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                        .monospacedDigit()
+                                }
                             }
                         }
 
                         Spacer()
 
-                        Button {
-                            withAnimation {
-                                selectedCustomer = nil
-                                customerPets = []
-                                selectedCustomerPetID = nil
-                            }
-                        } label: {
-                            Text(Language.get("Hotel_ChangeCustomer", alter: "تغيير"))
-                                .font(PPBrandFont.bold(size: 11))
-                                .foregroundStyle(Color.red)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.red.opacity(0.1), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .background(Color(uiColor: .systemGreen).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color(uiColor: .systemGreen).opacity(0.3), lineWidth: 0.8)
-                    )
-                }
-            }
-
-            // Customer Contact Fields
-            VStack(spacing: 10) {
-                // Name Field
-                HStack(spacing: 10) {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: 20)
-                    TextField(Language.get("Customer_Name_Placeholder", alter: "اسم العميل بالكامل *"), text: $customerName)
-                        .font(PPBrandFont.medium(size: 14))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(12)
-                .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(customerName.isEmpty && validationError != nil ? Color.red.opacity(0.6) : AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
-                )
-
-                // Phone Field with ALWAYS-ON-THE-LEFT Country Code Picker
-                HStack(spacing: 8) {
-                    // Country Code Picker Menu (Pinned strictly to the left)
-                    Menu {
-                        ForEach(AdminCountryCatalog.all) { item in
+                        // Direct Communication Action Buttons (WhatsApp & Call)
+                        HStack(spacing: 8) {
+                            // WhatsApp Quick Action Button
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                customerCountryCode = item.code
-                                customerCountryFlag = item.flag
-                                customerPhone = AdminCountryCatalog.formatDigits(customerPhone, for: item)
+                                openCustomerWhatsApp()
                             } label: {
-                                HStack {
-                                    Text(item.displayName)
-                                    if customerCountryCode == item.code {
-                                        Image(systemName: "checkmark")
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(red: 0.15, green: 0.78, blue: 0.36).opacity(0.15))
+                                        .frame(width: 38, height: 38)
+
+                                    if UIImage(named: "whatsapp") != nil {
+                                        Image("whatsapp")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 20, height: 20)
+                                    } else {
+                                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.36))
                                     }
                                 }
                             }
+                            .buttonStyle(PlainButtonStyle())
+
+                            // Phone Call Action Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                callCustomerPhone()
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.blue.opacity(0.12))
+                                        .frame(width: 38, height: 38)
+                                    Image(systemName: "phone.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(Color.blue)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(customerCountryFlag)
-                                .font(.system(size: 15))
-                            Text(customerCountryCode)
-                                .font(PPBrandFont.bold(size: 13.5))
-                                .foregroundStyle(AdminSurface.primaryText)
-                                .monospacedDigit()
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 7)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .stroke(AdminSurface.hairline, lineWidth: 0.6)
-                        )
                     }
 
-                    // Vertical Divider
-                    Rectangle()
-                        .fill(AdminSurface.hairline)
-                        .frame(width: 1, height: 22)
+                    Divider().background(AdminSurface.hairline.opacity(0.8))
 
-                    // Phone Text Field (Left to right digit flow)
-                    TextField(
-                        "",
-                        text: Binding(
-                            get: { customerPhone },
-                            set: { newValue in
-                                let currentCountry = AdminCountryCatalog.find(byCode: customerCountryCode)
-                                customerPhone = AdminCountryCatalog.formatDigits(newValue, for: currentCountry)
+                    // Secondary Status & Control Strip
+                    HStack(spacing: 8) {
+                        // Pets sync indicator
+                        HStack(spacing: 5) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(
+                                customerPets.isEmpty
+                                    ? Language.get("Hotel_NoSavedPetsNotice", alter: "لا توجد حيوانات مسجلة (سيتم الحفظ كنزيل جديد)")
+                                    : String(format: Language.get("Hotel_SavedPetsCount", alter: "%d حيوان مسجل بالحساب"), customerPets.count)
+                            )
+                            .font(PPBrandFont.medium(size: 11.5))
+                            .foregroundStyle(AdminSurface.primaryText)
+                        }
+
+                        Spacer()
+
+                        // Switch Customer Button (Opens POS Customer Picker Sheet)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showsPOSCustomerPicker = true
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(Language.get("Hotel_ChangeCustomer", alter: "تغيير المالك"))
+                                    .font(PPBrandFont.bold(size: 11))
                             }
-                        ),
-                        prompt: Text(Language.get("Customer_Phone_Placeholder", alter: "رقم هاتف العميل *"))
-                            .font(PPBrandFont.medium(size: 14))
-                            .foregroundColor(AdminSurface.secondaryText)
-                    )
-                    .keyboardType(.phonePad)
-                    .font(PPBrandFont.bold(size: 15))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .monospacedDigit()
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(customerPhone.isEmpty && validationError != nil ? Color.red.opacity(0.6) : AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
-                )
-                .environment(\.layoutDirection, .leftToRight)
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4.5)
+                            .background(AdminSurface.primary.opacity(0.1), in: Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
 
-                // Email Field (Optional)
-                HStack(spacing: 10) {
-                    Image(systemName: "envelope.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: 20)
-                    TextField(Language.get("Email_Optional", alter: "البريد الإلكتروني (اختياري)"), text: $customerEmail)
-                        .keyboardType(.emailAddress)
-                        .font(PPBrandFont.regular(size: 14))
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Unlink Customer Button
+                        Button {
+                            unlinkCustomer()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(Language.get("Hotel_UnlinkCustomer", alter: "فك الارتباط"))
+                                    .font(PPBrandFont.bold(size: 11))
+                            }
+                            .foregroundStyle(Color.red)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4.5)
+                            .background(Color.red.opacity(0.1), in: Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
-                .padding(12)
-                .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.8)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(uiColor: .systemGreen).opacity(0.06), AdminSurface.card],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .systemGreen).opacity(0.3), lineWidth: 1)
+                )
+            } else {
+                // ==========================================
+                // STATE B: SOVEREIGN CUSTOMER LAUNCHER PILL ONLY
+                // All customer searches, additions, and modifications occur exclusively through the POS Customer Directory
+                // ==========================================
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsPOSCustomerPicker = true
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [AdminSurface.primary.opacity(0.18), Color(red: 0.85, green: 0.20, blue: 0.40).opacity(0.12)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 48, height: 48)
+                            Image(systemName: "person.2.badge.gearshape.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(Language.get("Hotel_PickFromPOSDirectory", alter: "اختيار المالك من دليل العملاء الموحد (POS)"))
+                                    .font(PPBrandFont.bold(size: 14))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text("POS")
+                                    .font(PPBrandFont.bold(size: 9))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary, in: Capsule())
+                            }
+                            Text(Language.get("Hotel_PickFromPOSDirectory_Sub", alter: "تصفح سجلات العملاء، أو ابحث برقم الهاتف، أو أضف وعدّل بيانات المالك"))
+                                .font(PPBrandFont.regular(size: 12))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 5) {
+                            Text(Language.get("Common_Open", alter: "فتح الدليل"))
+                                .font(PPBrandFont.bold(size: 12.5))
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(AdminSurface.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(AdminSurface.primary.opacity(0.1), in: Capsule())
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [AdminSurface.control.opacity(0.7), AdminSurface.surface],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary.opacity(0.35), AdminSurface.hairline],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(16)
@@ -4182,19 +4221,63 @@ public struct AdminPetsHotelCreateReservationSheet: View {
         }
     }
 
+    private func applyPOSCustomer(_ record: POSCustomerRecord) {
+        selectedPOSRecord = record
+        let option = AdminHotelCustomerOption(
+            uid: record.id,
+            name: record.name,
+            phone: record.phone,
+            email: record.email,
+            photoURL: ""
+        )
+        selectCustomer(option)
+    }
+
+    private func unlinkCustomer() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            selectedCustomer = nil
+            selectedPOSRecord = nil
+            customerPets = []
+            selectedCustomerPetID = nil
+            customerName = ""
+            customerPhone = ""
+            customerEmail = ""
+        }
+    }
+
+    private func callCustomerPhone() {
+        let fullNumber = customerCountryCode + customerPhone
+        let clean = fullNumber.filter { "0123456789+".contains($0) }
+        guard let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private func openCustomerWhatsApp() {
+        let fullNumber = customerCountryCode + customerPhone
+        let clean = fullNumber.filter { "0123456789".contains($0) }
+        let greeting = Language.isRTL() ? "مرحباً بك في فندق بيور بيتس 🐾" : "Hello from Pure Pets Hotel 🐾"
+        let encoded = greeting.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let nativeURL = URL(string: "whatsapp://send?phone=\(clean)&text=\(encoded)"), UIApplication.shared.canOpenURL(nativeURL) {
+            UIApplication.shared.open(nativeURL)
+        } else if let webURL = URL(string: "https://api.whatsapp.com/send?phone=\(clean)&text=\(encoded)") {
+            UIApplication.shared.open(webURL)
+        }
+    }
+
     private func validateAndCreate() {
+        guard selectedCustomer != nil, !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            triggerValidationError(Language.get("Hotel_Err_CustomerRequiredFromDirectory", alter: "يرجى اختيار المالك من دليل العملاء الموحد (POS)."))
+            return
+        }
+
         let cleanCustomer = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanPhone = customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanPet = petName.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !cleanCustomer.isEmpty else {
-            triggerValidationError(Language.get("Hotel_Err_CustomerNameRequired", alter: "يرجى إدخال اسم العميل."))
-            return
-        }
-
         let phoneDigits = cleanPhone.filter { $0.isNumber }
         guard !phoneDigits.isEmpty else {
-            triggerValidationError(Language.get("Hotel_Err_CustomerPhoneRequired", alter: "يرجى إدخال رقم هاتف العميل."))
+            triggerValidationError(Language.get("Hotel_Err_CustomerPhoneRequired", alter: "يرجى التأكد من وجود رقم هاتف لمالك الحجز."))
             return
         }
 

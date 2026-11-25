@@ -129,6 +129,7 @@ enum POSCustomerPickerPurpose {
     case wantedPetRequest
     case proformaInvoice
     case customerManagement
+    case hotelReservation
 
     var isManagingCustomers: Bool { self == .customerManagement }
 
@@ -138,6 +139,7 @@ enum POSCustomerPickerPurpose {
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Title", alter: "دليل العملاء")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Title", alter: nil)
         case .customerManagement: return Language.get("POS_Customer_Management_Title", alter: nil)
+        case .hotelReservation: return Language.get("Hotel_CustomerPicker_Title", alter: "دليل عملاء الفندق ونقاط البيع")
         }
     }
 
@@ -155,6 +157,10 @@ enum POSCustomerPickerPurpose {
             return Language.get(canCreate ? "Proforma_CustomerPicker_Subtitle" : "Proforma_CustomerPicker_ReadOnly", alter: nil)
         case .customerManagement:
             return Language.get(canCreate ? "POS_Customer_Management_Subtitle" : "POS_Customer_Management_ReadOnly", alter: nil)
+        case .hotelReservation:
+            return canCreate
+                ? Language.get("Hotel_CustomerPicker_Subtitle", alter: "اختر مالك الحيوان أو أنشئ ملفاً فورياً لربط الحجز والحيوانات.")
+                : Language.get("Hotel_CustomerPicker_Subtitle_ReadOnly", alter: "اختر مالك الحيوان من الدليل لربط الحجز.")
         }
     }
 
@@ -164,6 +170,7 @@ enum POSCustomerPickerPurpose {
         case .wantedPetRequest: return Language.get("WantedPets_Directory_Select", alter: "استخدام هذا العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Select", alter: nil)
         case .customerManagement: return Language.get("POS_Customer_Management_OpenProfile", alter: nil)
+        case .hotelReservation: return Language.get("Hotel_CustomerPicker_Select", alter: "ربط المالك بالحجز الفندقي")
         }
     }
 
@@ -173,6 +180,7 @@ enum POSCustomerPickerPurpose {
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
         case .customerManagement: return Language.get("Save", alter: nil)
+        case .hotelReservation: return Language.get("Hotel_CustomerPicker_SaveAndSelect", alter: "حفظ وربط المالك بالحجز")
         }
     }
 
@@ -182,6 +190,7 @@ enum POSCustomerPickerPurpose {
         case .wantedPetRequest: return Language.get("WantedPets_Directory_SaveAndSelect", alter: "حفظ واستخدام العميل")
         case .proformaInvoice: return Language.get("Proforma_CustomerPicker_Save", alter: nil)
         case .customerManagement: return Language.get("Save", alter: nil)
+        case .hotelReservation: return Language.get("Hotel_CustomerPicker_Submit", alter: "حفظ وتحديد المالك للحجز")
         }
     }
 }
@@ -1870,6 +1879,34 @@ private struct iPhoneCustomerSensoryDeck: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var isSearchFocused: Bool
+    @State private var selectedCountry: AdminCountryCodeItem = AdminCountryCatalog.defaultCountry
+
+    private let quickNoteChips: [String] = [
+        "🌟 عميل VIP",
+        "💬 يفضل واتساب",
+        "🚗 توصيل سريع",
+        "🐾 رعاية خاصة",
+        "💳 دفع آجل"
+    ]
+
+    private func toggleNoteChip(_ chip: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        var current = viewModel.newNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if current.contains(chip) {
+            current = current.replacingOccurrences(of: chip, with: "")
+                .replacingOccurrences(of: "•  •", with: "•")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.hasPrefix("•") { current = String(current.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) }
+            if current.hasSuffix("•") { current = String(current.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines) }
+            viewModel.newNote = current
+        } else {
+            if current.isEmpty {
+                viewModel.newNote = chip
+            } else {
+                viewModel.newNote = "\(current) • \(chip)"
+            }
+        }
+    }
 
     private func text(_ key: String) -> String { Language.get(key, alter: nil) }
     private var locale: Locale { Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA") }
@@ -2359,31 +2396,92 @@ private struct iPhoneCustomerSensoryDeck: View {
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
     }
 
-    // MARK: - iPhone Create Chamber
+    // MARK: - iPhone Create Chamber (Next Gen V10 Redesign)
 
     private var iPhoneCreateChamber: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 20) {
                 feedbackMessages
-                // Live Monogram Hero Preview
-                ZStack {
-                    Circle()
-                        .fill(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.12) : AdminSurface.primary.opacity(0.15))
-                        .frame(width: 70, height: 70)
 
-                    if viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 26))
-                            .foregroundColor(AdminSurface.secondaryText)
-                    } else {
-                        Text(String(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2)).uppercased())
-                            .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title))
-                            .foregroundColor(AdminSurface.primary)
+                // 1. Live Persona Aura & Monogram Deck
+                VStack(spacing: 8) {
+                    ZStack {
+                        // Ambient Breathing Aura
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        AdminSurface.primary.opacity(viewModel.newName.isEmpty ? 0.08 : 0.22),
+                                        Color(red: 0.85, green: 0.20, blue: 0.40).opacity(viewModel.newName.isEmpty ? 0.04 : 0.15)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 88, height: 88)
+                            .blur(radius: viewModel.newName.isEmpty ? 2 : 6)
+
+                        // Outer Concentric Hairline Ring
+                        Circle()
+                            .strokeBorder(
+                                viewModel.newName.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.4),
+                                lineWidth: 1.5
+                            )
+                            .frame(width: 80, height: 80)
+
+                        // Core Avatar Circle
+                        Circle()
+                            .fill(
+                                viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? AnyShapeStyle(AdminSurface.surface)
+                                    : AnyShapeStyle(
+                                        LinearGradient(
+                                            colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                            )
+                            .frame(width: 72, height: 72)
+                            .shadow(color: viewModel.newName.isEmpty ? Color.clear : AdminSurface.primary.opacity(0.3), radius: 8, y: 3)
+
+                        if viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.system(size: 28, weight: .medium))
+                                .foregroundColor(AdminSurface.primary)
+                        } else {
+                            Text(String(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2)).uppercased())
+                                .font(PPBrandFont.bold(size: 26))
+                                .foregroundColor(.white)
+                        }
                     }
-                }
-                .padding(.top, 8)
 
-                // Duplicate Warning if Phone Exists
+                    // Persona Status Pill
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange)
+                            .frame(width: 6, height: 6)
+
+                        Text(
+                            viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6
+                                ? Language.get("POS_Customer_StatusReady", alter: "جاهز للحفظ والربط")
+                                : (viewModel.newName.isEmpty
+                                    ? Language.get("POS_Customer_StatusNew", alter: "تسجيل فوري لعميل جديد")
+                                    : Language.get("POS_Customer_StatusNeedPhone", alter: "أكمل رقم الهاتف للربط"))
+                        )
+                        .font(PPBrandFont.bold(size: 11.5))
+                        .foregroundStyle(viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        (viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange).opacity(0.1),
+                        in: Capsule()
+                    )
+                }
+                .padding(.top, 6)
+
+                // 2. Duplicate Warning if Phone Exists
                 if let match = viewModel.duplicateMatch {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -2396,118 +2494,374 @@ private struct iPhoneCustomerSensoryDeck: View {
                             dismiss()
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 10) {
                             Image(systemName: "person.crop.circle.badge.exclamationmark")
+                                .font(.system(size: 18))
                                 .foregroundColor(.orange)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(Language.get("POS_Customer_DuplicateFound", alter: "عميل مسجل مسبقاً بهذا الرقم!"))
-                                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                    .font(PPBrandFont.bold(size: 13))
                                     .foregroundColor(AdminSurface.primaryText)
-                                Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: nil), match.name))
-                                    .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption2))
+                                Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: "الاسم: %@"), match.name))
+                                    .font(PPBrandFont.medium(size: 12))
                                     .foregroundColor(.orange)
                             }
                             Spacer()
-                            Image(systemName: "arrowshape.turn.up.right.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.orange)
+                            HStack(spacing: 3) {
+                                Text(Language.get("POS_Customer_UseExisting", alter: "استخدام"))
+                                    .font(PPBrandFont.bold(size: 11.5))
+                                Image(systemName: Language.isRTL() ? "arrowshape.turn.up.backward.fill" : "arrowshape.turn.up.right.fill")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.orange, in: Capsule())
                         }
-                        .padding(10)
-                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(12)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.orange.opacity(0.35), lineWidth: 1))
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
 
-                // Form Container
-                VStack(spacing: 12) {
+                // 3. Elevated Form Fields Container
+                VStack(spacing: 14) {
                     // Name Field
-                    iPhoneFormField(
-                        title: Language.get("POS_Customer_NameField", alter: "اسم العميل (اختياري)"),
-                        placeholder: Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"),
-                        icon: "person.fill",
-                        text: $viewModel.newName
-                    )
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(Language.get("POS_Customer_NameField", alter: "اسم العميل"))
+                                .font(PPBrandFont.bold(size: 13))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(Language.get("Common_Optional", alter: "(اختياري)"))
+                                .font(PPBrandFont.regular(size: 11))
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Spacer()
+                        }
 
-                    // Phone Field
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
-                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.primaryText)
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(viewModel.newName.isEmpty ? AdminSurface.secondaryText : AdminSurface.primary)
+                                .font(.system(size: 14))
+                                .frame(width: 22)
+
+                            TextField(Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"), text: $viewModel.newName)
+                                .font(PPBrandFont.medium(size: 14.5))
+                                .multilineTextAlignment(.leading)
+                                .autocorrectionDisabled(true)
+
+                            if !viewModel.newName.isEmpty {
+                                Button {
+                                    viewModel.newName = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(!viewModel.newName.isEmpty ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.9)
+                        )
+                    }
+
+                    // Phone Field (The Essential Key)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
+                                .font(PPBrandFont.bold(size: 13))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(Language.get("Common_Required", alter: "(مطلوب)"))
+                                .font(PPBrandFont.bold(size: 11))
+                                .foregroundColor(AdminSurface.primary)
+                            Spacer()
+
+                            if viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 11))
+                                    Text(Language.get("POS_Customer_PhoneValid", alter: "رقم مكتمل"))
+                                        .font(PPBrandFont.bold(size: 11))
+                                }
+                                .foregroundColor(Color(uiColor: .systemGreen))
+                            }
+                        }
 
                         HStack(spacing: 8) {
-                            Text("🇶🇦 +974")
-                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 10)
+                            // Country Flag & Code Menu (Always strictly Left-anchored for telephony)
+                            Menu {
+                                ForEach(AdminCountryCatalog.all) { item in
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        selectedCountry = item
+                                        viewModel.newPhone = AdminCountryCatalog.formatDigits(viewModel.newPhone, for: item)
+                                    } label: {
+                                        HStack {
+                                            Text(item.displayName)
+                                            if selectedCountry.code == item.code {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Text(selectedCountry.flag)
+                                        .font(.system(size: 16))
+                                    Text(selectedCountry.code)
+                                        .font(PPBrandFont.bold(size: 13.5))
+                                        .foregroundColor(AdminSurface.primaryText)
+                                        .monospacedDigit()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 8)
                                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(AdminSurface.hairline, lineWidth: 0.6)
+                                )
+                            }
 
-                            TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.newPhone)
-                                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
-                                .keyboardType(.phonePad)
-                                .textContentType(.telephoneNumber)
-                                .multilineTextAlignment(.leading)
-                                .accessibilityLabel(text("POS_Customer_PhoneField"))
-                                .onChange(of: viewModel.newPhone, perform: { newValue in
-                                    viewModel.checkDuplicatePhone(newValue)
-                                })
+                            Rectangle()
+                                .fill(AdminSurface.hairline)
+                                .frame(width: 1, height: 22)
+
+                            TextField(
+                                "",
+                                text: Binding(
+                                    get: { viewModel.newPhone },
+                                    set: { newValue in
+                                        let formatted = AdminCountryCatalog.formatDigits(newValue, for: selectedCountry)
+                                        viewModel.newPhone = formatted
+                                        viewModel.checkDuplicatePhone(formatted)
+                                    }
+                                ),
+                                prompt: Text(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"))
+                                    .font(PPBrandFont.medium(size: 15))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            )
+                            .font(PPBrandFont.bold(size: 16))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .keyboardType(.phonePad)
+                            .textContentType(.telephoneNumber)
+                            .monospacedDigit()
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if !viewModel.newPhone.isEmpty {
+                                Button {
+                                    viewModel.newPhone = ""
+                                    viewModel.duplicateMatch = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                         .environment(\.layoutDirection, .leftToRight)
-                        .padding(6)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    viewModel.duplicateMatch != nil
+                                        ? Color.orange
+                                        : (viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen).opacity(0.5) : AdminSurface.hairline),
+                                    lineWidth: 1
+                                )
+                        )
                     }
 
                     // Email Field
-                    iPhoneFormField(
-                        title: Language.get("POS_Customer_EmailField", alter: "البريد الإلكتروني (اختياري)"),
-                        placeholder: Language.get("POS_Customer_EmailPlaceholder", alter: "customer@example.com"),
-                        icon: "envelope.fill",
-                        text: $viewModel.newEmail,
-                        keyboardType: .emailAddress
-                    )
-
-                    // Branch Selector
-                    if !viewModel.branches.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(Language.get("POS_Customer_BranchField", alter: "الفرع المفضل"))
-                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(Language.get("POS_Customer_EmailField", alter: "البريد الإلكتروني"))
+                                .font(PPBrandFont.bold(size: 13))
                                 .foregroundColor(AdminSurface.primaryText)
+                            Text(Language.get("Common_Optional", alter: "(اختياري)"))
+                                .font(PPBrandFont.regular(size: 11))
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Spacer()
+                        }
+
+                        HStack(spacing: 10) {
+                            Image(systemName: "envelope.fill")
+                                .foregroundColor(viewModel.newEmail.isEmpty ? AdminSurface.secondaryText : AdminSurface.primary)
+                                .font(.system(size: 14))
+                                .frame(width: 22)
+
+                            TextField(Language.get("POS_Customer_EmailPlaceholder", alter: "customer@example.com"), text: $viewModel.newEmail)
+                                .font(PPBrandFont.medium(size: 14.5))
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .multilineTextAlignment(.leading)
+                                .environment(\.layoutDirection, .leftToRight)
+
+                            if !viewModel.newEmail.isEmpty {
+                                Button {
+                                    viewModel.newEmail = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(!viewModel.newEmail.isEmpty ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.9)
+                        )
+                    }
+
+                    // Preferred Branch Field
+                    if !viewModel.branches.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(Language.get("POS_Customer_BranchField", alter: "الفرع المفضل"))
+                                    .font(PPBrandFont.bold(size: 13))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Spacer()
+                                if !viewModel.selectedBranchId.isEmpty {
+                                    Button {
+                                        viewModel.selectedBranchId = ""
+                                    } label: {
+                                        Text(Language.get("Common_Clear", alter: "إلغاء التحديد"))
+                                            .font(PPBrandFont.medium(size: 11.5))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                }
+                            }
 
                             ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     ForEach(viewModel.branches, id: \.id) { b in
                                         let active = viewModel.selectedBranchId == b.id
                                         Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             viewModel.selectedBranchId = active ? "" : b.id
                                         } label: {
-                                            Text(b.displayName)
-                                                .font(Font.custom(active ? "Beiruti-Bold" : "Beiruti-Regular", size: 12.5, relativeTo: .caption))
-                                                .foregroundColor(active ? .white : AdminSurface.primaryText)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .frame(minHeight: AdminTouchTarget.minimum)
-                                                .background(active ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
-                                                .overlay(Capsule().stroke(AdminSurface.hairline))
+                                            HStack(spacing: 6) {
+                                                Image(systemName: active ? "mappin.circle.fill" : "mappin.circle")
+                                                    .font(.system(size: 12))
+                                                Text(b.displayName)
+                                                    .font(PPBrandFont.bold(size: 12.5))
+                                            }
+                                            .foregroundColor(active ? .white : AdminSurface.primaryText)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .background(
+                                                active
+                                                    ? AnyShapeStyle(LinearGradient(colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                    : AnyShapeStyle(AdminSurface.surface),
+                                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                    .strokeBorder(active ? Color.clear : AdminSurface.hairline, lineWidth: 0.8)
+                                            )
+                                            .shadow(color: active ? AdminSurface.primary.opacity(0.25) : Color.clear, radius: 4, y: 2)
                                         }
                                         .buttonStyle(PlainButtonStyle())
                                     }
                                 }
+                                .padding(.horizontal, 2)
                             }
                         }
                     }
 
-                    // Notes Field
-                    iPhoneFormField(
-                        title: Language.get("POS_Customer_NoteField", alter: "ملاحظات داخلية"),
-                        placeholder: Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات حول التوصيل أو تفضيلات العميل…"),
-                        icon: "note.text",
-                        text: $viewModel.newNote
-                    )
+                    // Internal Notes & High-Velocity Quick Smart-Chips
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(Language.get("POS_Customer_NoteField", alter: "ملاحظات داخلية وتفضيلات"))
+                                .font(PPBrandFont.bold(size: 13))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                        }
+
+                        // Quick Smart-Chips Horizontal Scroll
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(quickNoteChips, id: \.self) { chip in
+                                    let isSelected = viewModel.newNote.contains(chip)
+                                    Button {
+                                        toggleNoteChip(chip)
+                                    } label: {
+                                        Text(chip)
+                                            .font(PPBrandFont.bold(size: 11.5))
+                                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(
+                                                isSelected ? AdminSurface.primary : AdminSurface.control,
+                                                in: Capsule()
+                                            )
+                                            .overlay(Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 0.6))
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
+
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "note.text")
+                                .foregroundColor(viewModel.newNote.isEmpty ? AdminSurface.secondaryText : AdminSurface.primary)
+                                .font(.system(size: 14))
+                                .frame(width: 22)
+                                .padding(.top, 2)
+
+                            TextField(Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات حول التوصيل أو تفضيلات العميل…"), text: $viewModel.newNote)
+                                .font(PPBrandFont.regular(size: 14))
+                                .multilineTextAlignment(.leading)
+
+                            if !viewModel.newNote.isEmpty {
+                                Button {
+                                    viewModel.newNote = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(!viewModel.newNote.isEmpty ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.9)
+                        )
+                    }
                 }
 
-                // Submit Button
+                // 4. Hero Primary Submit CTA
+                let canSubmit = viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 && !viewModel.isSubmitting
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    if selectedCountry.code != "+974" {
+                        let digits = viewModel.newPhone.filter { $0.isNumber }
+                        let codeDigits = selectedCountry.code.replacingOccurrences(of: "+", with: "")
+                        if !digits.hasPrefix(codeDigits) {
+                            viewModel.newPhone = "\(selectedCountry.code) \(viewModel.newPhone)"
+                        }
+                    }
                     viewModel.submitCreateCustomer { createdCustomer in
                         if purpose.isManagingCustomers {
                             viewModel.showManagedCustomer(createdCustomer)
@@ -2517,69 +2871,40 @@ private struct iPhoneCustomerSensoryDeck: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         if viewModel.isSubmitting {
                             ProgressView().tint(.white).scaleEffect(0.9)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 17, weight: .bold))
                         }
                         Text(purpose.createTitle)
-                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                            .font(PPBrandFont.bold(size: 16))
                     }
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .frame(maxWidth: .infinity, minHeight: 52)
                     .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
+                        canSubmit
+                            ? AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            : AnyShapeStyle(AdminSurface.primary.opacity(0.4)),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
-                    .shadow(color: AdminSurface.primary.opacity(0.24), radius: 8, y: 3)
+                    .shadow(color: canSubmit ? AdminSurface.primary.opacity(0.35) : Color.clear, radius: 10, y: 4)
                 }
-                .disabled(viewModel.isSubmitting)
-                .padding(.top, 10)
+                .disabled(!canSubmit)
+                .padding(.top, 8)
                 .padding(.bottom, 24)
             }
-            .padding(16)
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
         }
         .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func iPhoneFormField(
-        title: String,
-        placeholder: String,
-        icon: String,
-        text: Binding<String>,
-        keyboardType: UIKeyboardType = .default
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                .foregroundColor(AdminSurface.primaryText)
-
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .font(.system(size: 13))
-                    .frame(width: 20)
-
-                TextField(placeholder, text: text)
-                    .font(Font.custom("Beiruti-Regular", size: 14.5, relativeTo: .body))
-                    .keyboardType(keyboardType)
-                    .multilineTextAlignment(keyboardType == .emailAddress && direction == .rightToLeft ? .trailing : .leading)
-                    .environment(\.layoutDirection, keyboardType == .emailAddress ? .leftToRight : direction)
-                    .textInputAutocapitalization(keyboardType == .emailAddress ? .never : .sentences)
-                    .autocorrectionDisabled(true)
-                    .accessibilityLabel(title)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
-        }
     }
 }
 
@@ -2936,6 +3261,34 @@ private struct iPadCustomerSpatialCockpit: View {
 
     @ObservedObject private var creditStore = POSCustomerCreditStore.shared
     @FocusState private var isSearchFocused: Bool
+    @State private var selectedCountry: AdminCountryCodeItem = AdminCountryCatalog.defaultCountry
+
+    private let quickNoteChips: [String] = [
+        "🌟 عميل VIP",
+        "💬 يفضل واتساب",
+        "🚗 توصيل سريع",
+        "🐾 رعاية خاصة",
+        "💳 دفع آجل"
+    ]
+
+    private func toggleNoteChip(_ chip: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        var current = viewModel.newNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        if current.contains(chip) {
+            current = current.replacingOccurrences(of: chip, with: "")
+                .replacingOccurrences(of: "•  •", with: "•")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.hasPrefix("•") { current = String(current.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) }
+            if current.hasSuffix("•") { current = String(current.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines) }
+            viewModel.newNote = current
+        } else {
+            if current.isEmpty {
+                viewModel.newNote = chip
+            } else {
+                viewModel.newNote = "\(current) • \(chip)"
+            }
+        }
+    }
     @State private var showsCreditPolicySheet = false
 
     var body: some View {
@@ -3970,44 +4323,111 @@ private struct iPadCustomerSpatialCockpit: View {
         }
     }
 
-    // MARK: - State 2: Walk-In Registration Studio (iPad)
+    // MARK: - State 2: Walk-In Registration Studio (iPad Next Gen V10 Redesign)
 
     private var iPadInPlaceCreateChamber: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.badge.plus")
-                        .foregroundColor(AdminSurface.primary)
-                        .font(.system(size: 16))
-                    Text(Language.get("POS_Customer_TabCreate", alter: "تسجيل عميل جديد فوري"))
-                        .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                        .foregroundColor(AdminSurface.primaryText)
+                HStack(spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .foregroundColor(AdminSurface.primary)
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_Customer_TabCreate", alter: "تسجيل عميل جديد فوري"))
+                            .font(PPBrandFont.bold(size: 16))
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.get("POS_Customer_TabCreate_Sub", alter: "إضافة ملف عميل فوري إلى سجلات بيور بيتس الموحدة"))
+                            .font(PPBrandFont.regular(size: 11.5))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
                 }
                 Spacer()
+
+                // Persona Ready Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange)
+                        .frame(width: 6, height: 6)
+
+                    Text(
+                        viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6
+                            ? Language.get("POS_Customer_StatusReady", alter: "جاهز للحفظ والربط")
+                            : (viewModel.newName.isEmpty
+                                ? Language.get("POS_Customer_StatusNew", alter: "تسجيل فوري")
+                                : Language.get("POS_Customer_StatusNeedPhone", alter: "أكمل رقم الهاتف"))
+                    )
+                    .font(PPBrandFont.bold(size: 11.5))
+                    .foregroundStyle(viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    (viewModel.newPhone.trimmingCharacters(in: .whitespacesAndNewlines).count >= 6 ? Color(uiColor: .systemGreen) : Color.orange).opacity(0.1),
+                    in: Capsule()
+                )
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
             .background(AdminSurface.surface)
 
             Divider().background(AdminSurface.hairline)
 
             ScrollView {
-                VStack(spacing: 14) {
-                    // Live Monogram Hero Preview
-                    ZStack {
-                        Circle()
-                            .fill(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.12) : AdminSurface.primary.opacity(0.15))
-                            .frame(width: 60, height: 60)
+                VStack(spacing: 18) {
+                    // Live Persona Aura & Monogram Deck
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            AdminSurface.primary.opacity(viewModel.newName.isEmpty ? 0.08 : 0.22),
+                                            Color(red: 0.85, green: 0.20, blue: 0.40).opacity(viewModel.newName.isEmpty ? 0.04 : 0.15)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 80, height: 80)
+                                .blur(radius: viewModel.newName.isEmpty ? 2 : 5)
 
-                        if viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Image(systemName: "person.badge.plus")
-                                .font(.system(size: 22))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        } else {
-                            Text(String(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2)).uppercased())
-                                .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
-                                .foregroundColor(AdminSurface.primary)
+                            Circle()
+                                .strokeBorder(
+                                    viewModel.newName.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.4),
+                                    lineWidth: 1.5
+                                )
+                                .frame(width: 72, height: 72)
+
+                            Circle()
+                                .fill(
+                                    viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? AnyShapeStyle(AdminSurface.surface)
+                                        : AnyShapeStyle(
+                                            LinearGradient(
+                                                colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
+                                .frame(width: 64, height: 64)
+                                .shadow(color: viewModel.newName.isEmpty ? Color.clear : AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
+
+                            if viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 24, weight: .medium))
+                                    .foregroundColor(AdminSurface.primary)
+                            } else {
+                                Text(String(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2)).uppercased())
+                                    .font(PPBrandFont.bold(size: 22))
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                     .padding(.top, 8)
@@ -4018,109 +4438,252 @@ private struct iPadCustomerSpatialCockpit: View {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             if purpose.isManagingCustomers {
                                 viewModel.showManagedCustomer(match)
+                                viewModel.startEditing(customer: match)
                             } else {
                                 viewModel.rememberCustomer(match)
                                 onSelect?(match)
                                 dismiss()
                             }
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 10) {
                                 Image(systemName: "person.crop.circle.badge.exclamationmark")
+                                    .font(.system(size: 18))
                                     .foregroundColor(.orange)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(Language.get("POS_Customer_DuplicateFound", alter: "عميل مسجل مسبقاً بهذا الرقم!"))
-                                        .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                        .font(PPBrandFont.bold(size: 13))
                                         .foregroundColor(AdminSurface.primaryText)
-                                    Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: nil), match.name))
-                                        .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption2))
+                                    Text(String(format: Language.get(purpose.isManagingCustomers ? "POS_Customer_Management_Duplicate" : "POS_Customer_DuplicateSub", alter: "الاسم: %@"), match.name))
+                                        .font(PPBrandFont.medium(size: 12))
                                         .foregroundColor(.orange)
                                 }
                                 Spacer()
-                                Image(systemName: "arrowshape.turn.up.right.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.orange)
+                                HStack(spacing: 3) {
+                                    Text(Language.get("POS_Customer_UseExisting", alter: "استخدام"))
+                                        .font(PPBrandFont.bold(size: 11.5))
+                                    Image(systemName: Language.isRTL() ? "arrowshape.turn.up.backward.fill" : "arrowshape.turn.up.right.fill")
+                                        .font(.system(size: 11))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(Color.orange, in: Capsule())
                             }
-                            .padding(10)
-                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .padding(12)
+                            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.orange.opacity(0.3), lineWidth: 0.8))
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
 
                     // Form Fields
-                    VStack(spacing: 10) {
-                        // Name
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(Language.get("POS_Customer_NameField", alter: "اسم العميل"))
-                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                    VStack(spacing: 12) {
+                        // 1. Name Field
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(Language.get("POS_Customer_NameField", alter: "اسم العميل (اختياري)"))
+                                .font(PPBrandFont.bold(size: 12.5))
                                 .foregroundColor(AdminSurface.primaryText)
-                            TextField(Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"), text: $viewModel.newName)
-                                .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
-                        }
 
-                        // Phone
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
-                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primaryText)
-                            HStack(spacing: 6) {
-                                Text("🇶🇦 +974")
-                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 13))
                                     .foregroundColor(AdminSurface.secondaryText)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 8)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .frame(width: 18)
 
-                                TextField("5512 3456", text: $viewModel.newPhone)
-                                    .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .body))
-                                    .keyboardType(.phonePad)
-                                    .onChange(of: viewModel.newPhone, perform: { newValue in
-                                        viewModel.checkDuplicatePhone(newValue)
-                                    })
+                                TextField(Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"), text: $viewModel.newName)
+                                    .font(PPBrandFont.medium(size: 14))
+
+                                if !viewModel.newName.isEmpty {
+                                    Button {
+                                        viewModel.newName = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                }
                             }
-                            .padding(4)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                            )
                         }
 
-                        // Email
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(Language.get("POS_Customer_EmailField", alter: "البريد الإلكتروني"))
-                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primaryText)
-                            TextField("customer@example.com", text: $viewModel.newEmail)
-                                .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                                .keyboardType(.emailAddress)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
-                        }
-
-                        // Branch Selector
-                        if !viewModel.branches.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(Language.get("POS_Customer_BranchField", alter: "الفرع المفضل"))
-                                    .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                        // 2. Phone Field with Qatar/GCC Country Code Picker
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(Language.get("POS_Customer_PhoneField", alter: "رقم الهاتف *"))
+                                    .font(PPBrandFont.bold(size: 12.5))
                                     .foregroundColor(AdminSurface.primaryText)
+                                Spacer()
+                                Text(Language.get("POS_Customer_PhoneRequired", alter: "مطلوب للربط وحفظ السجل"))
+                                    .font(PPBrandFont.regular(size: 10.5))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            HStack(spacing: 8) {
+                                Menu {
+                                    ForEach(AdminCountryCatalog.all) { item in
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            selectedCountry = item
+                                            viewModel.newPhone = AdminCountryCatalog.formatDigits(viewModel.newPhone, for: item)
+                                            viewModel.checkDuplicatePhone(viewModel.newPhone)
+                                        } label: {
+                                            HStack {
+                                                Text(item.displayName)
+                                                if selectedCountry.code == item.code {
+                                                    Image(systemName: "checkmark")
+                                                }
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Text(selectedCountry.flag)
+                                            .font(.system(size: 16))
+                                        Text(selectedCountry.code)
+                                            .font(PPBrandFont.bold(size: 13))
+                                            .foregroundColor(AdminSurface.primaryText)
+                                            .monospacedDigit()
+                                        Image(systemName: "chevron.down")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(AdminSurface.hairline, lineWidth: 0.6)
+                                    )
+                                }
+
+                                Rectangle()
+                                    .fill(AdminSurface.hairline)
+                                    .frame(width: 1, height: 22)
+
+                                TextField(
+                                    "",
+                                    text: Binding(
+                                        get: { viewModel.newPhone },
+                                        set: { newValue in
+                                            let formatted = AdminCountryCatalog.formatDigits(newValue, for: selectedCountry)
+                                            viewModel.newPhone = formatted
+                                            viewModel.checkDuplicatePhone(formatted)
+                                        }
+                                    ),
+                                    prompt: Text(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"))
+                                        .font(PPBrandFont.medium(size: 14))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                )
+                                .keyboardType(.phonePad)
+                                .font(PPBrandFont.bold(size: 15))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .monospacedDigit()
+
+                                if !viewModel.newPhone.isEmpty {
+                                    Button {
+                                        viewModel.newPhone = ""
+                                        viewModel.checkDuplicatePhone("")
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(viewModel.duplicateMatch != nil ? Color.orange : AdminSurface.hairline, lineWidth: 0.8)
+                            )
+                        }
+
+                        // 3. Email Field
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(Language.get("POS_Customer_EmailField", alter: "البريد الإلكتروني (اختياري)"))
+                                .font(PPBrandFont.bold(size: 12.5))
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            HStack(spacing: 10) {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .frame(width: 18)
+
+                                TextField("customer@example.com", text: $viewModel.newEmail)
+                                    .font(PPBrandFont.regular(size: 14))
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+
+                                if !viewModel.newEmail.isEmpty {
+                                    Button {
+                                        viewModel.newEmail = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 11)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                            )
+                        }
+
+                        // 4. Preferred Branch Selector
+                        if !viewModel.branches.isEmpty {
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    Image(systemName: "mappin.and.ellipse")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(AdminSurface.primary)
+                                    Text(Language.get("POS_Customer_BranchField", alter: "الفرع المفضل"))
+                                        .font(PPBrandFont.bold(size: 12.5))
+                                        .foregroundColor(AdminSurface.primaryText)
+                                    Spacer()
+                                }
 
                                 ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 5) {
+                                    HStack(spacing: 8) {
                                         ForEach(viewModel.branches, id: \.id) { b in
                                             let active = viewModel.selectedBranchId == b.id
                                             Button {
-                                                viewModel.selectedBranchId = active ? "" : b.id
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                                    viewModel.selectedBranchId = active ? "" : b.id
+                                                }
                                             } label: {
-                                                Text(b.displayName)
-                                                    .font(Font.custom(active ? "Beiruti-Bold" : "Beiruti-Regular", size: 12, relativeTo: .caption))
-                                                    .foregroundColor(active ? .white : AdminSurface.primaryText)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 5)
-                                                    .background(active ? AdminSurface.primary : AdminSurface.surface, in: Capsule())
-                                                    .overlay(Capsule().stroke(AdminSurface.hairline))
+                                                HStack(spacing: 5) {
+                                                    if active {
+                                                        Image(systemName: "checkmark")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                    }
+                                                    Text(b.displayName)
+                                                        .font(PPBrandFont.bold(size: 12.5))
+                                                }
+                                                .foregroundColor(active ? .white : AdminSurface.primaryText)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 7)
+                                                .background(
+                                                    active
+                                                        ? AnyShapeStyle(LinearGradient(colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                        : AnyShapeStyle(AdminSurface.surface),
+                                                    in: Capsule()
+                                                )
+                                                .overlay(Capsule().stroke(active ? Color.clear : AdminSurface.hairline, lineWidth: 0.8))
+                                                .shadow(color: active ? AdminSurface.primary.opacity(0.25) : Color.clear, radius: 4, y: 1.5)
                                             }
                                             .buttonStyle(PlainButtonStyle())
                                         }
@@ -4129,27 +4692,84 @@ private struct iPadCustomerSpatialCockpit: View {
                             }
                         }
 
-                        // Notes
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(Language.get("POS_Customer_NoteField", alter: "ملاحظات داخلية"))
-                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primaryText)
-                            TextField(Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات حول التوصيل أو تفضيلات العميل…"), text: $viewModel.newNote)
-                                .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                        // 5. Internal Notes with Smart Chips
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(Language.get("POS_Customer_NoteField", alter: "ملاحظات داخلية"))
+                                    .font(PPBrandFont.bold(size: 12.5))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Spacer()
+                                Text(Language.get("POS_Customer_NoteOptional", alter: "اختياري"))
+                                    .font(PPBrandFont.regular(size: 10.5))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            // Quick chips for velocity
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(quickNoteChips, id: \.self) { chip in
+                                        Button {
+                                            toggleNoteChip(chip)
+                                        } label: {
+                                            Text(chip)
+                                                .font(PPBrandFont.medium(size: 11))
+                                                .foregroundColor(viewModel.newNote.contains(chip) ? AdminSurface.primary : AdminSurface.secondaryText)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(
+                                                    viewModel.newNote.contains(chip) ? AdminSurface.primary.opacity(0.1) : AdminSurface.control,
+                                                    in: Capsule()
+                                                )
+                                                .overlay(
+                                                    Capsule().stroke(
+                                                        viewModel.newNote.contains(chip) ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline,
+                                                        lineWidth: 0.6
+                                                    )
+                                                )
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    }
+                                }
+                            }
+
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "note.text")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .padding(.top, 2)
+                                    .frame(width: 18)
+
+                                TextField(Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات حول التوصيل أو تفضيلات العميل…"), text: $viewModel.newNote)
+                                    .font(PPBrandFont.regular(size: 13.5))
+
+                                if !viewModel.newNote.isEmpty {
+                                    Button {
+                                        viewModel.newNote = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                            )
                         }
                     }
                 }
-                .padding(16)
+                .padding(18)
             }
 
             Divider().background(AdminSurface.hairline)
 
             // Submit Button
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 viewModel.submitCreateCustomer { createdCustomer in
                     if purpose.isManagingCustomers {
                         viewModel.showManagedCustomer(createdCustomer)
@@ -4164,25 +4784,25 @@ private struct iPadCustomerSpatialCockpit: View {
                         ProgressView().tint(.white).scaleEffect(0.9)
                     } else {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                     }
                     Text(purpose.createTitle)
-                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                        .font(PPBrandFont.bold(size: 15.5))
                 }
                 .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 46)
+                .frame(maxWidth: .infinity, minHeight: 48)
                 .background(
                     LinearGradient(
-                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                        colors: [AdminSurface.primary, Color(red: 0.85, green: 0.20, blue: 0.40)],
                         startPoint: .leading,
                         endPoint: .trailing
                     ),
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
-                .shadow(color: AdminSurface.primary.opacity(0.2), radius: 6, y: 2)
+                .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
             }
             .disabled(viewModel.isSubmitting)
-            .padding(14)
+            .padding(16)
             .background(AdminSurface.surface)
         }
     }

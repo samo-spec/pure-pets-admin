@@ -1301,19 +1301,29 @@ struct AdminCommandCenterScreenView: View {
 
 }
 
-// MARK: - NextGen V9 Sovereign Side Panel Navigation
+// MARK: - NextGen V10 Sovereign Side Panel Navigation
 
-/// NextGen V9 Sovereign Side Panel Navigation for the Admin Command Center.
-/// Replaces the legacy inline menu with an immersive, fluid, tactile drawer navigation
-/// designed to category-defining standards:
-/// - Directional fluid slide transition with interactive drag-to-dismiss gesture
-/// - Frosted living glass backdrop scrim with blur and tap-to-dismiss
-/// - Operator Profile & Identity capsule with live online pulse beacon
-/// - Operational Branch Scope selector
-/// - Language Matrix switcher & Live telemetry refresh
-/// - Fast-access Sovereign Command Routes (Inventory, POS, Orders, Staff, Accounting, Settings)
-/// - Destructive session sign-out action
-/// - Strict adherence to Arabic RTL / English LTR mirroring, Beiruti typography, and design tokens
+/// Tactile spring-feedback press style for NextGen Sovereign navigation elements.
+private struct NextGenSideNavPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.975 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+/// NextGen V10 Sovereign Side Panel Navigation for the Admin Command Center.
+/// Category-defining executive cockpit drawer designed from absolute first principles:
+/// - Living frosted acrylic glass canvas with top-corner specular aurora breathing glow
+/// - Executive Operator Dossier Capsule with concentric golden/brand aura & live verified beacon
+/// - Active Operational Branch Cockpit tile with illuminated storefront iconography
+/// - High-velocity Twin Sovereign Utility Capsules (Interactive Language Matrix + 360° Live Sync Engine)
+/// - Living System Readiness & Integrity Radar tuned to diagnostic telemetry
+/// - Segmented Bento Route Fleet for the 6 core executive operations (Inventory, POS, Orders, Staff, Finance, System)
+/// - High-prestige Secure Sovereign Exit Capsule with crimson glassmorphic protection
+/// - Directional fluid slide with velocity-predicted drag-to-dismiss gesture
+/// - Strict Arabic RTL and English LTR mirroring, Beiruti typography, and design tokens
 private struct AdminNextGenSidePanelNav: View {
     @Binding var isPresented: Bool
 
@@ -1342,6 +1352,7 @@ private struct AdminNextGenSidePanelNav: View {
     @Environment(\.colorScheme) private var colorScheme
     @GestureState private var dragTranslation: CGFloat = 0
     @State private var spinRefreshIcon: Bool = false
+    @State private var auraPulse: Bool = false
 
     private var isRTL: Bool {
         layoutDirection == .rightToLeft
@@ -1374,7 +1385,7 @@ private struct AdminNextGenSidePanelNav: View {
             panelHeader
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     operatorIdentityCard
                     branchScopeCard
 
@@ -1388,34 +1399,69 @@ private struct AdminNextGenSidePanelNav: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
-                .padding(.bottom, max(safeAreaInsets.bottom + 20, 32))
+                .padding(.bottom, max(safeAreaInsets.bottom + 24, 36))
             }
         }
         .frame(maxHeight: .infinity)
         .background(
-            AdminSurface.surface
+            ZStack {
+                AdminSurface.surface
+
+                // Ambient living aurora glow at top-corner
+                RadialGradient(
+                    colors: [
+                        AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.08),
+                        Color(red: 0.85, green: 0.20, blue: 0.40).opacity(colorScheme == .dark ? 0.06 : 0.03),
+                        Color.clear
+                    ],
+                    center: isRTL ? .topLeading : .topTrailing,
+                    startRadius: 20,
+                    endRadius: 260
+                )
                 .ignoresSafeArea()
+            }
+            .ignoresSafeArea()
         )
         .overlay(
             HStack(spacing: 0) {
                 if isRTL {
                     Spacer()
                     Rectangle()
-                        .fill(AdminSurface.hairline)
-                        .frame(width: 0.75)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(0.4),
+                                    AdminSurface.hairline,
+                                    AdminSurface.hairline.opacity(0.3)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 1)
                 } else {
                     Rectangle()
-                        .fill(AdminSurface.hairline)
-                        .frame(width: 0.75)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(0.4),
+                                    AdminSurface.hairline,
+                                    AdminSurface.hairline.opacity(0.3)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 1)
                     Spacer()
                 }
             }
             .ignoresSafeArea()
         )
         .shadow(
-            color: Color.black.opacity(colorScheme == .dark ? 0.45 : 0.22),
-            radius: 28,
-            x: isRTL ? 10 : -10,
+            color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.08),
+            radius: 18,
+            x: isRTL ? 6 : -6,
             y: 0
         )
         .offset(x: activeOffset)
@@ -1435,6 +1481,11 @@ private struct AdminNextGenSidePanelNav: View {
                     }
                 }
         )
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                auraPulse = true
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -1442,31 +1493,47 @@ private struct AdminNextGenSidePanelNav: View {
     private var panelHeader: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("Admin_SideNav_Title", alter: "لوحة التحكم السريعة"))
-                    .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
-                    .foregroundStyle(AdminSurface.primaryText)
+                HStack(spacing: 6) {
+                    Text(Language.get("Admin_SideNav_Title", alter: "لوحة التحكم السريعة"))
+                        .font(PPBrandFont.bold(size: 16.5, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
 
-                Text(Language.get("Admin_SideNav_Subtitle", alter: "العمليات والخيارات السيادية"))
-                    .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                    .foregroundStyle(AdminSurface.secondaryText)
+                    Circle()
+                        .fill(Color(uiColor: .systemGreen))
+                        .frame(width: 7, height: 7)
+                        .shadow(color: Color(uiColor: .systemGreen).opacity(0.6), radius: 3)
+                }
+
+                HStack(spacing: 5) {
+                    Image(systemName: "shield.lefthalf.filled")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    Text(Language.get("Admin_SideNav_Subtitle", alter: "العمليات والخيارات السيادية"))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
 
             Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 32, height: 32)
-                    .background(
-                        AdminSurface.control,
-                        in: Circle()
-                    )
-                    .overlay(
-                        Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                    )
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.control)
+
+                    Circle()
+                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .frame(width: 32, height: 32)
             }
-            .buttonStyle(CommandHeaderPressStyle())
+            .buttonStyle(NextGenSideNavPressStyle())
             .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
             .accessibilityIdentifier("admin.sidepanel.close")
         }
@@ -1481,79 +1548,135 @@ private struct AdminNextGenSidePanelNav: View {
             onAccount()
         } label: {
             HStack(alignment: .center, spacing: 12) {
+                // Dynamic Avatar Deck with Aura & Verified Beacon
                 ZStack(alignment: .bottomTrailing) {
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [AdminSurface.primary.opacity(0.5), Color(red: 0.85, green: 0.20, blue: 0.40).opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.5
+                        )
+                        .frame(width: 50, height: 50)
+
                     AdminRemoteImage(
                         url: URL(string: avatarURL),
                         contentMode: .fill,
-                        targetSize: CGSize(width: 46, height: 46)
+                        targetSize: CGSize(width: 44, height: 44)
                     ) {
                         ZStack {
                             LinearGradient(
                                 colors: [
-                                    Color(uiColor: .ppPrimary).opacity(0.18),
-                                    Color(uiColor: .ppSoftRose).opacity(0.38)
+                                    Color(uiColor: .ppPrimary),
+                                    Color(red: 0.85, green: 0.20, blue: 0.40)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                             Text(monogram)
-                                .font(PPBrandFont.bold(size: 16, relativeTo: .subheadline))
-                                .foregroundStyle(Color(uiColor: .ppAccentText))
+                                .font(PPBrandFont.bold(size: 17, relativeTo: .subheadline))
+                                .foregroundStyle(.white)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(width: 46, height: 46)
-                    .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                    )
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
 
+                    // Verified Live Pulse Beacon
                     Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 1.5))
+                        .fill(Color(uiColor: .systemGreen))
+                        .frame(width: 11, height: 11)
+                        .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2))
+                        .shadow(color: Color(uiColor: .systemGreen).opacity(0.7), radius: 3)
                         .offset(x: 2, y: 2)
                 }
 
+                // Operator Credential Typography
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(displayName.isEmpty ? Language.get("StaffUser_DefaultName", alter: "مشرف النظام") : displayName)
-                        .font(PPBrandFont.bold(size: 14.5, relativeTo: .subheadline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(displayName.isEmpty ? Language.get("StaffUser_DefaultName", alter: "مشرف النظام") : displayName)
+                            .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
 
-                    HStack(spacing: 5) {
                         Text("ADMIN")
                             .font(.system(size: 8.5, weight: .heavy, design: .rounded))
                             .foregroundStyle(Color(uiColor: .ppAccentText))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(Color(uiColor: .ppAccentText).opacity(0.10), in: Capsule())
+                            .padding(.horizontal, 5.5)
+                            .padding(.vertical, 2)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(uiColor: .ppAccentText).opacity(0.14),
+                                        Color(uiColor: .ppPrimary).opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: Capsule()
+                            )
+                            .overlay(Capsule().stroke(Color(uiColor: .ppAccentText).opacity(0.25), lineWidth: 0.6))
+                    }
 
+                    HStack(spacing: 5) {
                         Text(roleName)
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                            .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+
+                        Text("•")
+                            .font(.system(size: 9))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+
+                        Text(Language.get("Admin_Session_Active", alter: "جلسة موثقة"))
+                            .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
+                            .foregroundStyle(Color(uiColor: .systemGreen))
                             .lineLimit(1)
                     }
                 }
 
                 Spacer()
 
-                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                HStack(spacing: 3) {
+                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                }
+                .padding(6)
+                .background(AdminSurface.surface.opacity(0.8), in: Circle())
             }
             .padding(12)
             .background(
-                AdminSurface.control,
-                in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.control.opacity(0.8),
+                                AdminSurface.card
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.25),
+                                AdminSurface.hairline
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.8
+                    )
             )
         }
-        .buttonStyle(CommandHeaderPressStyle())
+        .buttonStyle(NextGenSideNavPressStyle())
         .accessibilityLabel(displayName)
         .accessibilityIdentifier("admin.sidepanel.account")
     }
@@ -1567,25 +1690,32 @@ private struct AdminNextGenSidePanelNav: View {
                 ZStack {
                     LinearGradient(
                         colors: canSwitchBranch
-                            ? [Color(uiColor: .ppPrimary), Color(uiColor: .ppPrimary).opacity(0.85)]
+                            ? [Color(uiColor: .ppPrimary), Color(red: 0.85, green: 0.20, blue: 0.40)]
                             : [AdminSurface.control, AdminSurface.hairline],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                     Image(systemName: "storefront.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(canSwitchBranch ? Color.white : AdminSurface.secondaryText)
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: 40, height: 40)
                 .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+                .shadow(color: canSwitchBranch ? Color(uiColor: .ppPrimary).opacity(0.28) : Color.clear, radius: 4, y: 1.5)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("AdminCommandCenter_Header_BranchScope", alter: "فرع التشغيل المعتمد"))
-                        .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
-                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("AdminCommandCenter_Header_BranchScope", alter: "فرع العمل المعتمد"))
+                            .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
 
                     Text(branchName)
-                        .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
+                        .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
                 }
@@ -1593,128 +1723,143 @@ private struct AdminNextGenSidePanelNav: View {
                 Spacer()
 
                 if canSwitchBranch {
-                    Text(Language.get("Branch_Switch_Action", alter: "تبديل"))
-                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
-                        .foregroundStyle(Color(uiColor: .ppAccentText))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3.5)
-                        .background(Color(uiColor: .ppAccentText).opacity(0.12), in: Capsule())
+                    HStack(spacing: 3) {
+                        Text(Language.get("Branch_Switch_Action", alter: "تبديل"))
+                            .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(Color(uiColor: .ppAccentText))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(Color(uiColor: .ppAccentText).opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(Color(uiColor: .ppAccentText).opacity(0.3), lineWidth: 0.6))
                 }
             }
             .padding(12)
             .background(
-                AdminSurface.control,
-                in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
+                    .fill(AdminSurface.control)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
             )
         }
-        .buttonStyle(CommandHeaderPressStyle())
+        .buttonStyle(NextGenSideNavPressStyle())
         .disabled(!canSwitchBranch)
         .accessibilityIdentifier("admin.sidepanel.branch")
     }
 
     private var systemOperationsDeck: some View {
         VStack(spacing: 8) {
-            // Language Matrix Option
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onLanguage()
-            } label: {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Color(uiColor: .ppPrimary).opacity(0.14)
-                        Image(systemName: "globe")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(uiColor: .ppPrimary))
-                    }
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+            // Twin Fast-Action Grid: Language Switcher + Live Telemetry Refresh
+            HStack(spacing: 9) {
+                // 1. Language Matrix Pill
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onLanguage()
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color.blue.opacity(0.18), Color.indigo.opacity(0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "globe")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.blue)
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(Language.get("Admin_SideNav_Language", alter: "لغة التطبيق"))
-                            .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
-                            .foregroundStyle(AdminSurface.primaryText)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("Admin_SideNav_Language", alter: "لغة التطبيق"))
+                                .font(PPBrandFont.bold(size: 11.5, relativeTo: .footnote))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(currentLocaleCode == "ar" ? "English" : "العربية")
+                                .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 2)
 
                         Text(languageTitle)
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
+                            .background(Color.blue.opacity(0.12), in: Capsule())
+                            .overlay(Capsule().stroke(Color.blue.opacity(0.25), lineWidth: 0.6))
                     }
-
-                    Spacer()
-
-                    Text(Language.get("Confirm_LanguageChange_Title", alter: "تغيير"))
-                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
-                        .foregroundStyle(Color(uiColor: .ppAccentText))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3.5)
-                        .background(Color(uiColor: .ppAccentText).opacity(0.12), in: Capsule())
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                 }
-                .padding(10)
-                .background(
-                    AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                )
+                .buttonStyle(NextGenSideNavPressStyle())
+                .accessibilityIdentifier("admin.sidepanel.language")
+
+                // 2. Live Telemetry Refresh Pill
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+                        spinRefreshIcon = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        spinRefreshIcon = false
+                    }
+                    onRefresh()
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            LinearGradient(
+                                colors: [Color(uiColor: .systemGreen).opacity(0.18), Color.teal.opacity(0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(uiColor: .systemGreen))
+                                .rotationEffect(.degrees(spinRefreshIcon ? 360 : 0))
+                        }
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("Refresh", alter: "تحديث"))
+                                .font(PPBrandFont.bold(size: 11.5, relativeTo: .footnote))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(Language.get("Admin_SideNav_RefreshSubtitle", alter: "مزامنة حية"))
+                                .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 2)
+
+                        Circle()
+                            .fill(Color(uiColor: .systemGreen))
+                            .frame(width: 6.5, height: 6.5)
+                            .shadow(color: Color(uiColor: .systemGreen).opacity(0.6), radius: 2)
+                            .padding(.trailing, 2)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
+                .buttonStyle(NextGenSideNavPressStyle())
+                .accessibilityIdentifier("admin.sidepanel.refresh")
             }
-            .buttonStyle(CommandHeaderPressStyle())
-            .accessibilityIdentifier("admin.sidepanel.language")
-
-            // Refresh System Telemetry Option
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    spinRefreshIcon = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    spinRefreshIcon = false
-                }
-                onRefresh()
-            } label: {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Color(uiColor: .ppSuccess).opacity(0.14)
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color(uiColor: .ppSuccess))
-                            .rotationEffect(.degrees(spinRefreshIcon ? 360 : 0))
-                    }
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(Language.get("AdminCommandCenter_Refresh", alter: "تحديث البيانات"))
-                            .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
-                            .foregroundStyle(AdminSurface.primaryText)
-
-                        Text(Language.get("Admin_SideNav_RefreshSubtitle", alter: "مزامنة اللوحة الحية"))
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.7))
-                }
-                .padding(10)
-                .background(
-                    AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                        .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                )
-            }
-            .buttonStyle(CommandHeaderPressStyle())
-            .accessibilityIdentifier("admin.sidepanel.refresh")
 
             // System Readiness Status
             Button {
@@ -1725,10 +1870,11 @@ private struct AdminNextGenSidePanelNav: View {
             } label: {
                 HStack(spacing: 12) {
                     ZStack {
-                        readinessTone.accent.opacity(0.14)
+                        readinessTone.accent.opacity(0.15)
                         Circle()
                             .fill(readinessTone.accent)
                             .frame(width: 8, height: 8)
+                            .shadow(color: readinessTone.accent.opacity(0.6), radius: 2.5)
                     }
                     .frame(width: 34, height: 34)
                     .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
@@ -1737,57 +1883,86 @@ private struct AdminNextGenSidePanelNav: View {
                         Text(Language.get("Admin_SideNav_SystemHealth", alter: "حالة النظام والجاهزية"))
                             .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
                             .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
 
                         Text(readinessText)
                             .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
                             .foregroundStyle(readinessTone.accent)
+                            .lineLimit(1)
                     }
 
                     Spacer()
 
                     if onReadinessTap != nil {
-                        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(readinessTone.accent)
+                        HStack(spacing: 3) {
+                            Text(Language.get("Admin_Diagnostic_Action", alter: "فحص"))
+                                .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
+                                .lineLimit(1)
+                            Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundStyle(readinessTone.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3.5)
+                        .background(readinessTone.accent.opacity(0.12), in: Capsule())
                     }
                 }
-                .padding(10)
+                .padding(11)
                 .background(
-                    AdminSurface.control,
+                    readinessTone.accent.opacity(0.05),
                     in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                        .strokeBorder(readinessTone.accent.opacity(0.28), lineWidth: 0.75)
+                        .strokeBorder(readinessTone.accent.opacity(0.28), lineWidth: 0.8)
                 )
             }
-            .buttonStyle(CommandHeaderPressStyle())
+            .buttonStyle(NextGenSideNavPressStyle())
             .disabled(onReadinessTap == nil)
             .accessibilityIdentifier("admin.sidepanel.readiness")
         }
     }
 
     private var quickRoutesDeck: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(Language.get("Admin_SideNav_QuickRoutes", alter: "الوصول السريع للأقسام"))
-                .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
-                .foregroundStyle(AdminSurface.secondaryText)
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                HStack(spacing: 5) {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(AdminSurface.primary)
 
-            VStack(spacing: 4) {
+                    Text(Language.get("Admin_SideNav_QuickRoutes", alter: "الوصول السريع للأقسام"))
+                        .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                Text(Language.get("Admin_SideNav_RoutesCount", alter: "6 أقسام رئيسية"))
+                    .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: Capsule())
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+
+            VStack(spacing: 5) {
                 sideNavItem(
                     tag: "accessories",
                     icon: "shippingbox.fill",
-                    color: Color(uiColor: .ppQuickActionServices),
+                    gradient: [Color.teal, Color.cyan],
+                    badge: "STOCK",
                     title: Language.get("Inventory_Title", alter: "المخزون والمنتجات"),
-                    subtitle: Language.get("Inventory_Subtitle", alter: "إدارة المخزون والتسعير")
+                    subtitle: Language.get("Inventory_Subtitle", alter: "إدارة المخزون والتسعير والباركود")
                 )
 
                 sideNavItem(
                     tag: "pos",
                     icon: "cart.fill",
-                    color: Color(uiColor: .ppPrimary),
+                    gradient: [Color(uiColor: .ppPrimary), Color(red: 0.85, green: 0.20, blue: 0.40)],
+                    badge: "POS",
                     title: Language.get("POS_Title", alter: "نقطة البيع السريعة"),
                     subtitle: Language.get("POS_Subtitle", alter: "الفواتير والمبيعات المباشرة")
                 )
@@ -1795,80 +1970,112 @@ private struct AdminNextGenSidePanelNav: View {
                 sideNavItem(
                     tag: "fulfillment",
                     icon: "truck.box.fill",
-                    color: Color(uiColor: .ppPrimaryShiner),
+                    gradient: [Color.orange, Color(red: 0.95, green: 0.55, blue: 0.15)],
+                    badge: "ORDERS",
                     title: Language.get("Orders_Title", alter: "الطلبات والتجهيز"),
-                    subtitle: Language.get("Orders_Subtitle", alter: "تتبع وحالات التوصيل")
+                    subtitle: Language.get("Orders_Subtitle", alter: "تتبع الطلبات وحالات التوصيل")
                 )
 
                 sideNavItem(
                     tag: "staffManagement",
                     icon: "person.2.badge.gearshape.fill",
-                    color: Color(uiColor: .ppAccentText),
+                    gradient: [Color.indigo, Color.purple],
+                    badge: "STAFF",
                     title: Language.get("Staff_Title", alter: "طاقم العمل والصلاحيات"),
-                    subtitle: Language.get("Staff_Subtitle", alter: "الأدوار والتفويض")
+                    subtitle: Language.get("Staff_Subtitle", alter: "الأدوار والتفويض وسجل الموظفين")
                 )
 
                 sideNavItem(
                     tag: "accounting",
                     icon: "chart.pie.fill",
-                    color: Color(uiColor: .ppPrimaryDarker),
+                    gradient: [Color(red: 0.85, green: 0.15, blue: 0.35), Color.pink],
+                    badge: "FINANCE",
                     title: Language.get("Accounting_Title", alter: "المالية والمحاسبة"),
-                    subtitle: Language.get("Accounting_Subtitle", alter: "القيود والتقارير المالية")
+                    subtitle: Language.get("Accounting_Subtitle", alter: "القيود المحاسبية والتقارير المالية")
                 )
 
                 sideNavItem(
                     tag: "settings",
                     icon: "gearshape.2.fill",
-                    color: Color(uiColor: .ppTextSecondary),
+                    gradient: [Color.gray, Color.secondary],
+                    badge: "SYSTEM",
                     title: Language.get("Settings_Title", alter: "إعدادات النظام والتدقيق"),
-                    subtitle: Language.get("Settings_Subtitle", alter: "سجل العمليات والتهيئة")
+                    subtitle: Language.get("Settings_Subtitle", alter: "سجل العمليات والتهيئة العامة")
                 )
             }
         }
     }
 
-    private func sideNavItem(tag: String, icon: String, color: Color, title: String, subtitle: String) -> some View {
+    private func sideNavItem(
+        tag: String,
+        icon: String,
+        gradient: [Color],
+        badge: String,
+        title: String,
+        subtitle: String
+    ) -> some View {
         Button {
             dismiss()
             onRoute(tag)
         } label: {
             HStack(spacing: 12) {
                 ZStack {
-                    color.opacity(0.12)
+                    LinearGradient(
+                        colors: [gradient[0].opacity(0.18), gradient.last?.opacity(0.10) ?? gradient[0].opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                     Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(color)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(gradient[0])
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 36, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                        .strokeBorder(gradient[0].opacity(0.25), lineWidth: 0.6)
+                )
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(PPBrandFont.bold(size: 12.5, relativeTo: .footnote))
+                        .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
 
                     Text(subtitle)
-                        .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
+                        .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .lineLimit(1)
                 }
 
                 Spacer()
 
-                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.4))
+                HStack(spacing: 6) {
+                    Text(badge)
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(gradient[0])
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(gradient[0].opacity(0.1), in: Capsule())
+
+                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
             .background(
-                AdminSurface.control.opacity(0.55),
-                in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                AdminSurface.control.opacity(0.6),
+                in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline.opacity(0.7), lineWidth: 0.6)
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(CommandHeaderPressStyle())
+        .buttonStyle(NextGenSideNavPressStyle())
         .accessibilityIdentifier("admin.sidepanel.route.\(tag)")
     }
 
@@ -1879,20 +2086,28 @@ private struct AdminNextGenSidePanelNav: View {
         } label: {
             HStack(spacing: 12) {
                 ZStack {
-                    Color.red.opacity(0.14)
+                    LinearGradient(
+                        colors: [Color.red.opacity(0.18), Color(red: 0.9, green: 0.2, blue: 0.3).opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.red)
                 }
-                .frame(width: 34, height: 34)
+                .frame(width: 36, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
+                        .strokeBorder(Color.red.opacity(0.25), lineWidth: 0.6)
+                )
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("Logout", alter: "تسجيل الخروج"))
-                        .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
+                        .font(PPBrandFont.bold(size: 13.5, relativeTo: .footnote))
                         .foregroundStyle(Color.red)
 
-                    Text(Language.get("Settings_Logout_Subtitle", alter: "إنهاء جلسة الإدارة بأمان"))
+                    Text(Language.get("Settings_Logout_Subtitle", alter: "إنهاء جلسة الإدارة وتأمين الحساب"))
                         .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
@@ -1900,31 +2115,43 @@ private struct AdminNextGenSidePanelNav: View {
                 Spacer()
 
                 Image(systemName: isRTL ? "arrow.left" : "arrow.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.red.opacity(0.7))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.red.opacity(0.75))
+                    .padding(6)
+                    .background(Color.red.opacity(0.1), in: Circle())
             }
-            .padding(10)
+            .padding(11)
             .background(
-                Color.red.opacity(0.06),
-                in: RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
+                LinearGradient(
+                    colors: [Color.red.opacity(0.06), Color.red.opacity(0.02)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: CommandCorner.tile, style: .continuous)
-                    .strokeBorder(Color.red.opacity(0.20), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: CommandCorner.card, style: .continuous)
+                    .strokeBorder(Color.red.opacity(0.22), lineWidth: 0.8)
             )
         }
-        .buttonStyle(CommandHeaderPressStyle())
+        .buttonStyle(NextGenSideNavPressStyle())
         .accessibilityIdentifier("admin.sidepanel.logout")
     }
 
     private var footnoteView: some View {
-        VStack(spacing: 2) {
-            Text("PURE PETS SOVEREIGN COMMAND")
-                .font(.system(size: 8.5, weight: .heavy, design: .rounded))
-                .foregroundStyle(AdminSurface.secondaryText.opacity(0.5))
-                .tracking(0.8)
+        VStack(spacing: 3) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(AdminSurface.primary)
 
-            Text("Version 1.1.0 • Build 7")
+                Text("PURE PETS SOVEREIGN COMMAND")
+                    .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                    .tracking(0.9)
+            }
+
+            Text("Enterprise Admin • Sovereign Kernel v1.1.0 (Build 7)")
                 .font(.system(size: 9.5, weight: .regular))
                 .foregroundStyle(AdminSurface.secondaryText.opacity(0.4))
         }
