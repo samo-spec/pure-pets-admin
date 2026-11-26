@@ -325,7 +325,8 @@ final class ProformaInvoiceStore: ObservableObject {
     func perform(_ action: String, paymentMethod: String? = nil, cashReceived: String? = nil) async {
         guard !isLocked, !isLoading else { return }
         if action == "cancel" {
-            if let target = selected ?? (draft != nil ? invoices.first(where: { $0.id == draft!.invoiceID }) : nil) {
+            let draftInvoiceID = draft?.invoiceID
+            if let target = selected ?? draftInvoiceID.flatMap({ id in invoices.first(where: { $0.id == id }) }) {
                 _ = await cancelInvoice(target)
                 return
             }
@@ -346,7 +347,8 @@ final class ProformaInvoiceStore: ObservableObject {
                 guard let method = paymentMethod, ["cash", "card"].contains(method) else { throw ProformaFailure.invalidInput }
                 var payment: [String: Any] = ["paymentMethod": method]
                 if method == "cash" {
-                    guard let cashReceived, let amount = ProformaDecimal.parse(cashReceived, scale: 2), amount <= Decimal(string: "999999999.99")!,
+                    let maxMoney = Decimal(sign: .plus, exponent: -2, significand: 99_999_999_999)
+                    guard let cashReceived, let amount = ProformaDecimal.parse(cashReceived, scale: 2), amount <= maxMoney,
                           let selected, amount >= ProformaDecimal.minor(selected.totals.totalMinor) else { throw ProformaFailure.invalidInput }
                     payment["cashReceived"] = ProformaDecimal.string(amount)
                 }

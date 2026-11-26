@@ -46,6 +46,7 @@ public final class BranchContextStore: ObservableObject {
     public static let shared = BranchContextStore()
 
     @Published public private(set) var activeBranch: PPBranchModel?
+    @Published public private(set) var systemDefaultBranch: PPBranchModel?
     @Published public private(set) var activeSession: PPBranchSession?
     @Published public private(set) var availableBranches: [PPBranchModel] = []
     @Published public private(set) var isGlobal: Bool = false
@@ -83,6 +84,7 @@ public final class BranchContextStore: ObservableObject {
     public func syncFromManager() {
         let manager = PPBranchContextManager.shared()
         self.activeBranch = manager.activeBranch
+        self.systemDefaultBranch = manager.systemDefaultBranch()
         self.availableBranches = (manager.availableBranches as? [PPBranchModel]) ?? []
         self.currentStaff = manager.currentStaff
         self.isGlobal = manager.isGlobalAccess
@@ -139,6 +141,15 @@ public final class BranchContextStore: ObservableObject {
         PPBranchContextManager.shared().reloadAvailableBranches { [weak self] _ in
             DispatchQueue.main.async {
                 self?.syncFromManager()
+            }
+        }
+    }
+
+    public func applySystemDefaultBranchChange(_ branchID: String, completion: (@Sendable (Bool) -> Void)? = nil) {
+        PPBranchContextManager.shared().applySystemDefaultBranchChange(branchID) { [weak self] applied in
+            DispatchQueue.main.async {
+                self?.syncFromManager()
+                completion?(applied)
             }
         }
     }

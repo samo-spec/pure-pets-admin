@@ -269,8 +269,16 @@ final class AdminBranchesViewModel: ObservableObject {
     func toggleActive(for branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         let branchID = branch.branchID
         guard !branchID.isEmpty else { return }
+        guard canManage else {
+            completion(false, Language.get("PPAlert_Error_Permission_Message", alter: "Missing or insufficient permissions."))
+            return
+        }
 
         if branch.isActive {
+            if branch.isDefault {
+                completion(false, Language.get("Branches_Cannot_Deactivate_Default", alter: "Cannot deactivate the primary default branch. Assign another default branch first."))
+                return
+            }
             let count = agentCount(for: branchID)
             if count > 0 {
                 let format = Language.get("Branches_Cannot_Deactivate_Agents", alter: nil)
@@ -285,13 +293,13 @@ final class AdminBranchesViewModel: ObservableObject {
         docRef.updateData([
             "isActive": newActive,
             "updatedAt": FieldValue.serverTimestamp()
-        ]) { [weak self] error in
+        ]) { error in
             DispatchQueue.main.async {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
                     let successMsg = newActive ? Language.get("Branches_Activated", alter: nil) : Language.get("Branches_Deactivated", alter: nil)
-                    self?.writeToggleAuditLog(branch: branch, newActive: newActive)
+                    PPBranchContextManager.shared().reloadAvailableBranches(completion: nil)
                     completion(true, successMsg)
                 }
             }
@@ -301,6 +309,14 @@ final class AdminBranchesViewModel: ObservableObject {
     func setDefaultBranch(_ branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         let targetID = branch.branchID
         guard !targetID.isEmpty else { return }
+        guard canManage else {
+            completion(false, Language.get("PPAlert_Error_Permission_Message", alter: "Missing or insufficient permissions."))
+            return
+        }
+        guard branch.isActive else {
+            completion(false, Language.get("Branches_Cannot_Set_Inactive_Default", alter: "Activate this branch before setting it as the primary default branch."))
+            return
+        }
         let batch = Firestore.firestore().batch()
 
         for b in branches {
@@ -325,7 +341,9 @@ final class AdminBranchesViewModel: ObservableObject {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
-                    completion(true, Language.get("Branches_Updated", alter: nil))
+                    PPBranchContextManager.shared().applySystemDefaultBranchChange(targetID) { _ in
+                        completion(true, Language.get("Branches_Updated", alter: nil))
+                    }
                 }
             }
         }
@@ -377,9 +395,12 @@ final class AdminBranchesViewModel: ObservableObject {
                     completion(false, error.localizedDescription)
                 } else {
                     guard let self else { return }
-                    self.writeConsumerStockAuditLog(branch: branch)
-                    self.synchronizeConsumerBranchStock(branch: branch) { _, _ in
-                        completion(true, Language.get("Branches_UserAppStock_Success", alter: "تم اعتماد مخزون هذا الفرع ومزامنة منتجات تطبيق العملاء بنجاح."))
+                    self.synchronizeConsumerBranchStock(branch: branch) { syncOK, syncErr in
+                        if syncOK {
+                            completion(true, Language.get("Branches_UserAppStock_Success", alter: "تم اعتماد مخزون هذا الفرع ومزامنة منتجات تطبيق العملاء بنجاح."))
+                        } else {
+                            completion(false, syncErr ?? Language.get("Error_Generic", alter: "تعذّر إتمام مزامنة مخزون تطبيق المستخدمين."))
+                        }
                     }
                 }
             }
@@ -388,84 +409,13 @@ final class AdminBranchesViewModel: ObservableObject {
 
     private func synchronizeConsumerBranchStock(branch: PPBranchModel, completion: @escaping @Sendable (Bool, String?) -> Void) {
         let functions = Functions.functions(region: "us-central1")
-        functions.httpsCallable("syncConsumerBranchStock").call(["branchId": branch.branchID]) { result, error in
-            if let error = error {
-                print("⚠️ [ConsumerStockSync] Callable note: \(error.localizedDescription), projecting directly...")
-                self.projectBranchStockDirectly(branch: branch, completion: completion)
+        functions.httpsCallable("syncConsumerBranchStock").call(["branchId": branch.branchID]) { _, error in
+            if let error {
+                completion(false, error.localizedDescription)
             } else {
-                print("✅ [ConsumerStockSync] Callable sync succeeded for branch \(branch.nameAr)")
                 completion(true, nil)
             }
         }
-    }
-
-    private func projectBranchStockDirectly(branch: PPBranchModel, completion: @escaping @Sendable (Bool, String?) -> Void) {
-        let db = Firestore.firestore()
-        let branchID = branch.branchID
-
-        db.collection("branchInventory").whereField("branchId", isEqualTo: branchID).getDocuments { invSnap, invErr in
-            guard let invDocs = invSnap?.documents else {
-                completion(true, nil)
-                return
-            }
-
-            var stockMap: [String: Int] = [:]
-            for doc in invDocs {
-                let data = doc.data()
-                if let pid = data["productId"] as? String {
-                    let avail = (data["availableQuantity"] as? NSNumber)?.intValue ?? (data["quantity"] as? NSNumber)?.intValue ?? 0
-                    stockMap[pid] = max(0, avail)
-                }
-            }
-
-            db.collection("petAccessories").getDocuments { prodSnap, prodErr in
-                guard let prodDocs = prodSnap?.documents else {
-                    completion(true, nil)
-                    return
-                }
-
-                let batch = db.batch()
-                let now = FieldValue.serverTimestamp()
-
-                for doc in prodDocs {
-                    let pid = doc.documentID
-                    let branchQty = stockMap[pid] ?? 0
-                    let noStock = (branchQty <= 0)
-
-                    batch.updateData([
-                        "quantity": branchQty,
-                        "noStock": noStock,
-                        "storeBranchId": branchID,
-                        "storeBranchNameAr": branch.nameAr,
-                        "storeBranchNameEn": branch.nameEn,
-                        "updatedAt": now
-                    ], forDocument: doc.reference)
-                }
-
-                batch.commit { commitErr in
-                    if let commitErr {
-                        print("⚠️ [ConsumerStockSync] Direct projection note: \(commitErr.localizedDescription)")
-                    } else {
-                        print("✅ [ConsumerStockSync] Direct projection committed successfully")
-                    }
-                    completion(true, nil)
-                }
-            }
-        }
-    }
-
-    private func writeConsumerStockAuditLog(branch: PPBranchModel) {
-        let uid = Auth.auth().currentUser?.uid ?? "unknown_admin"
-        Firestore.firestore().collection("auditLogs").document().setData([
-            "action": "branch_set_consumer_stock",
-            "targetCollection": kPPBranchesCol,
-            "targetId": branch.branchID,
-            "adminUid": uid,
-            "branchCode": branch.code,
-            "branchNameAr": branch.nameAr,
-            "branchNameEn": branch.nameEn,
-            "timestamp": FieldValue.serverTimestamp()
-        ])
     }
 
     func deleteBranch(_ branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
@@ -486,40 +436,16 @@ final class AdminBranchesViewModel: ObservableObject {
             return
         }
 
-        Firestore.firestore().collection(kPPBranchesCol).document(branchID).delete { [weak self] error in
+        Firestore.firestore().collection(kPPBranchesCol).document(branchID).delete { error in
             DispatchQueue.main.async {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
-                    self?.writeDeleteAuditLog(branch: branch)
+                    PPBranchContextManager.shared().reloadAvailableBranches(completion: nil)
                     completion(true, Language.get("Deleted", alter: nil))
                 }
             }
         }
-    }
-
-    private func writeToggleAuditLog(branch: PPBranchModel, newActive: Bool) {
-        let uid = Auth.auth().currentUser?.uid ?? ""
-        Firestore.firestore().collection("AdminAuditLogs").document().setData([
-            "action": "toggle_branch_active",
-            "targetCollection": kPPBranchesCol,
-            "targetId": branch.branchID,
-            "adminUid": uid,
-            "before": ["isActive": !newActive],
-            "after": ["isActive": newActive],
-            "timestamp": FieldValue.serverTimestamp()
-        ])
-    }
-
-    private func writeDeleteAuditLog(branch: PPBranchModel) {
-        let uid = Auth.auth().currentUser?.uid ?? ""
-        Firestore.firestore().collection("AdminAuditLogs").document().setData([
-            "action": "delete_branch",
-            "targetCollection": kPPBranchesCol,
-            "targetId": branch.branchID,
-            "adminUid": uid,
-            "timestamp": FieldValue.serverTimestamp()
-        ])
     }
 }
 

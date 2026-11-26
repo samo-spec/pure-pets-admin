@@ -8,6 +8,7 @@
 //
 
 #import "PPBranchEditorViewController.h"
+#import "PPBranchContextManager.h"
 @import Firebase;
 @import FirebaseFirestore;
 @import FirebaseAuth;
@@ -658,7 +659,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
         }
 
         [newDocRef setData:payload completion:^(NSError *error) {
-            [self handleSaveCompletion:error];
+            [self handleSaveCompletion:error savedBranchID:newDocRef.documentID];
         }];
     } else {
         NSString *docID = self.branch.branchID;
@@ -680,12 +681,12 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
 
         [[[db collectionWithPath:kPPBranchesCol] documentWithPath:docID]
          updateData:payload completion:^(NSError *error) {
-            [self handleSaveCompletion:error];
+            [self handleSaveCompletion:error savedBranchID:docID];
         }];
     }
 }
 
-- (void)handleSaveCompletion:(NSError *)error {
+- (void)handleSaveCompletion:(NSError *)error savedBranchID:(NSString *)branchID {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.isSaving = NO;
         self.saveButton.enabled = YES;
@@ -696,27 +697,16 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
             [PPHUD showError:kLang(@"Error_Generic")];
             [PPFunc pp_playErrorEffect];
         } else {
+            if ([self.draft[@"isDefault"] boolValue] && branchID.length > 0) {
+                [[PPBranchContextManager sharedManager] applySystemDefaultBranchChange:branchID completion:nil];
+            } else {
+                [[PPBranchContextManager sharedManager] reloadAvailableBranchesWithCompletion:nil];
+            }
             [PPHUD showSuccess:self.isNew ? kLang(@"Branches_Created") : kLang(@"Branches_Updated")];
             [PPFunc pp_playSuccessEffect];
-            [self writeAuditLog];
             [self.navigationController popViewControllerAnimated:YES];
         }
     });
-}
-
-- (void)writeAuditLog {
-    NSString *action = self.isNew ? @"create_branch" : @"update_branch";
-    NSString *uid = [FIRAuth auth].currentUser.uid ?: @"";
-    NSString *targetId = self.branch.branchID ?: self.draft[@"code"] ?: @"";
-
-    [[[[FIRFirestore firestore] collectionWithPath:@"AdminAuditLogs"] documentWithAutoID]
-     setData:@{
-        @"action": action,
-        @"targetCollection": kPPBranchesCol,
-        @"targetId": targetId,
-        @"adminUid": uid,
-        @"timestamp": [FIRFieldValue fieldValueForServerTimestamp],
-    }];
 }
 
 #pragma mark - UITextFieldDelegate

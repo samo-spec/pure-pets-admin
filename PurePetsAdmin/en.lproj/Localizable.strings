@@ -3367,6 +3367,8 @@
 "ConfirmDelete_Branch_Format" = "Are you sure you want to permanently delete \"%@\"? This action cannot be undone.";
 "Branches_Deactivate_Confirm_Format" = "Do you want to deactivate \"%@\"? This branch will not appear in sales until reactivated.";
 "Branches_Cannot_Delete_Default" = "Cannot delete the primary default branch.";
+"Branches_Cannot_Deactivate_Default" = "Cannot deactivate the primary default branch. Assign another default branch first.";
+"Branches_Cannot_Set_Inactive_Default" = "Activate this branch before setting it as the primary default branch.";
 "Branches_Telemetry_Total" = "Total Branches";
 "Branches_Telemetry_Active" = "Active Branches";
 "Branches_Telemetry_Default" = "Primary Branch";
@@ -4056,6 +4058,12 @@
 "AdminCommandCenter_Header_Switch" = "Switch";
 "AdminCommandCenter_Header_FixedBranchHint" = "No other branch is available to switch to.";
 "AdminCommandCenter_Header_Language_Format" = "Switch to %@";
+"AdminCommandCenter_Header_UnnamedBranch" = "Branch name unavailable";
+"AdminCommandCenter_Header_Unconfirmed" = "No source update yet";
+"AdminCommandCenter_Header_NoSourceErrors" = "No source errors reported";
+"AdminCommandCenter_Header_SourceFailed_Format" = "Couldn’t update %@";
+"AdminCommandCenter_Header_SourcesFailed" = "Some data couldn’t be updated";
+"AdminCommandCenter_SourceIssue_LastChecked_Format" = "Last checked %@";
 "AdminCommandCenter_Retry" = "Retry";
 "AdminCommandCenter_SourceIssue_SheetTitle" = "Source details";
 "AdminCommandCenter_SourceIssue_SheetDetail" = "The dashboard could not confirm current data from these sources. Other available workflows remain usable.";
@@ -13902,3 +13910,11 @@
 "Fulfillment_Ledger_RecordedOrderDeliveryFee" = "Delivery fee (whole order)";
 "Fulfillment_Ledger_UnknownFee" = "Unavailable";
 "PaymentMgmt_Field_RecordedDeliveryFeeUnavailable" = "Not recorded on this order";
+
+/* POS Progressive Search */
+"POS_Search_RecentTitle" = "Recent searches";
+"POS_Search_QuickMatches" = "Top matches";
+"POS_Search_SearchAllScopeFormat" = "Search all products (%ld)";
+"POS_Search_ClearHistory" = "Clear history";
+"POS_Search_ProgressiveCount_Format" = "%ld matches";
+"POS_Search_VariantsCount_Format" = "%ld options";

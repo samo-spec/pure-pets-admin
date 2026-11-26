@@ -148,6 +148,31 @@ public final class PPInventoryLotService: ObservableObject {
 
     private init() {}
 
+    private func resolveLotBranch(
+        requestedBranchId: String,
+        errorDomain: String,
+        errorKey: String,
+        fallbackError: String
+    ) throws -> String {
+        if let resolved = PPBranchInventoryResolver.resolveWorkingBranchID(
+            explicitBranchID: requestedBranchId,
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID ?? BranchContextStore.shared.availableBranches.first(where: { $0.isDefault })?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ) {
+            return resolved
+        }
+        if let firstAvailable = BranchContextStore.shared.availableBranches.first(where: { PPBranchInventoryResolver.canonicalBranchID($0.branchID) != nil })?.branchID {
+            return firstAvailable
+        }
+        throw NSError(
+            domain: errorDomain,
+            code: 400,
+            userInfo: [NSLocalizedDescriptionKey: Language.get(errorKey, alter: fallbackError)]
+        )
+    }
+
     /// Fetches branch inventory lots sorted by FEFO (earliest expiry first).
     public func fetchLots(
         branchId: String,
@@ -159,25 +184,12 @@ public final class PPInventoryLotService: ObservableObject {
         isLoading = true
         defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
 
-        let resolvedBranch: String
-        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty && trimmed != "all_branches" && trimmed != "main_store" {
-            resolvedBranch = trimmed
-        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
-            resolvedBranch = active
-        } else if let firstAvailable = BranchContextStore.shared.availableBranches.first(where: { !$0.branchID.isEmpty && $0.branchID != "all_branches" && $0.branchID != "main_store" })?.branchID {
-            resolvedBranch = firstAvailable
-        } else if !trimmed.isEmpty && trimmed != "all_branches" {
-            resolvedBranch = trimmed
-        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-            resolvedBranch = active
-        } else {
-            throw NSError(
-                domain: "PPInventoryLotService",
-                code: 400,
-                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error", alter: "يجب تحديد الفرع لعرض التشغيلات")]
-            )
-        }
+        let resolvedBranch = try resolveLotBranch(
+            requestedBranchId: branchId,
+            errorDomain: "PPInventoryLotService",
+            errorKey: "Branch_Required_Error",
+            fallbackError: "يجب تحديد الفرع لعرض التشغيلات"
+        )
 
         let payload: [String: Any] = [
             "branchId": resolvedBranch,
@@ -286,25 +298,12 @@ public final class PPInventoryLotService: ObservableObject {
         isLoading = true
         defer { pendingLoads -= 1; isLoading = pendingLoads > 0 }
 
-        let resolvedBranch: String
-        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty && trimmed != "all_branches" && trimmed != "main_store" {
-            resolvedBranch = trimmed
-        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
-            resolvedBranch = active
-        } else if let firstAvailable = BranchContextStore.shared.availableBranches.first(where: { !$0.branchID.isEmpty && $0.branchID != "all_branches" && $0.branchID != "main_store" })?.branchID {
-            resolvedBranch = firstAvailable
-        } else if !trimmed.isEmpty && trimmed != "all_branches" {
-            resolvedBranch = trimmed
-        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-            resolvedBranch = active
-        } else {
-            throw NSError(
-                domain: "PPInventoryLotManager",
-                code: 400,
-                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error_Create_Lot", alter: "يجب تحديد الفرع لإنشاء التشغيلة")]
-            )
-        }
+        let resolvedBranch = try resolveLotBranch(
+            requestedBranchId: branchId,
+            errorDomain: "PPInventoryLotManager",
+            errorKey: "Branch_Required_Error_Create_Lot",
+            fallbackError: "يجب تحديد الفرع لإنشاء التشغيلة"
+        )
 
         let isoFormatter = ISO8601DateFormatter()
         let clampedValidFrom = min(validFrom, Date())

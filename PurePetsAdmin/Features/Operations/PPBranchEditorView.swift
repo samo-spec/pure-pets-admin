@@ -15,9 +15,9 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 import FirebaseAuth
-import FirebaseFunctions
+@preconcurrency import FirebaseFunctions
 import UIKit
 
 // MARK: - Root Adaptive Coordinator
@@ -353,6 +353,15 @@ final class BranchEditorState: ObservableObject {
             return
         }
 
+        if isDefault && !isActive {
+            let errorMsg = Language.get("Branches_Cannot_Set_Inactive_Default", alter: "فعّل الفرع أولاً قبل تعيينه كفرع رئيسي افتراضي.")
+            self.validationError = errorMsg
+            showToast(errorMsg, isError: true)
+            let errorHaptic = UINotificationFeedbackGenerator()
+            errorHaptic.notificationOccurred(.error)
+            return
+        }
+
         self.validationError = nil
         self.isSaving = true
 
@@ -363,7 +372,90 @@ final class BranchEditorState: ObservableObject {
             return Firestore.firestore().collection(kPPBranchesCol).document().documentID
         }()
         let uid = Auth.auth().currentUser?.uid ?? ""
+        let branchesCollection = kPPBranchesCol
+        let shouldClearDefault = isDefault
+        let shouldClearConsumerStock = isConsumerAppStock
 
+        if shouldClearDefault || shouldClearConsumerStock {
+            Task { @MainActor [weak self] in
+                async let defaultIDsToClear: [String] = shouldClearDefault
+                    ? Self.fetchBranchIDsToClear(in: branchesCollection, whereField: "isDefault", excluding: docID)
+                    : []
+                async let consumerStockIDsToClear: [String] = shouldClearConsumerStock
+                    ? Self.fetchBranchIDsToClear(in: branchesCollection, whereField: "isConsumerAppStock", excluding: docID)
+                    : []
+
+                let (defaultIDs, consumerStockIDs) = await (defaultIDsToClear, consumerStockIDsToClear)
+                guard let self else { return }
+
+                let db = Firestore.firestore()
+                let collection = db.collection(branchesCollection)
+                let ref = collection.document(docID)
+                let payload = self.makeBranchPayload(
+                    docID: docID,
+                    uid: uid,
+                    trimmedAr: trimmedAr,
+                    trimmedEn: trimmedEn,
+                    trimmedCode: trimmedCode
+                )
+
+                let batch = db.batch()
+                batch.setData(payload, forDocument: ref, merge: true)
+
+                for otherID in defaultIDs {
+                    batch.updateData(["isDefault": false], forDocument: collection.document(otherID))
+                }
+                for otherID in consumerStockIDs {
+                    batch.updateData(["isConsumerAppStock": false], forDocument: collection.document(otherID))
+                }
+
+                if self.isConsumerAppStock {
+                    let configRef = db.collection("AppConfigCol").document("ConsumerStockConfig")
+                    batch.setData([
+                        "branchId": docID,
+                        "activeConsumerBranchId": docID,
+                        "branchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
+                        "nameAr": trimmedAr,
+                        "nameEn": trimmedEn,
+                        "activeConsumerBranchNameAr": trimmedAr,
+                        "activeConsumerBranchNameEn": trimmedEn,
+                        "updatedAt": FieldValue.serverTimestamp(),
+                        "updatedBy": uid
+                    ], forDocument: configRef, merge: true)
+                }
+
+                batch.commit { [weak self] error in
+                    Task { @MainActor [weak self] in
+                        self?.handleBranchSaveCompletion(error: error, docID: docID)
+                    }
+                }
+            }
+        } else {
+            let db = Firestore.firestore()
+            let ref = db.collection(branchesCollection).document(docID)
+            let payload = makeBranchPayload(
+                docID: docID,
+                uid: uid,
+                trimmedAr: trimmedAr,
+                trimmedEn: trimmedEn,
+                trimmedCode: trimmedCode
+            )
+            ref.setData(payload, merge: true) { [weak self] error in
+                Task { @MainActor [weak self] in
+                    self?.handleBranchSaveCompletion(error: error, docID: docID)
+                }
+            }
+        }
+    }
+    
+    
+    private func makeBranchPayload(
+        docID: String,
+        uid: String,
+        trimmedAr: String,
+        trimmedEn: String,
+        trimmedCode: String
+    ) -> [String: Any] {
         var payload: [String: Any] = [
             "nameAr": trimmedAr,
             "nameEn": trimmedEn,
@@ -405,114 +497,44 @@ final class BranchEditorState: ObservableObject {
             payload["createdBy"] = uid
         }
 
-        let ref = Firestore.firestore().collection(kPPBranchesCol).document(docID)
+        return payload
+    }
 
-        if isDefault || isConsumerAppStock {
-            let batch = Firestore.firestore().batch()
-            batch.setData(payload, forDocument: ref, merge: true)
-
-            if isConsumerAppStock {
-                let configRef = Firestore.firestore().collection("AppConfigCol").document("ConsumerStockConfig")
-                batch.setData([
-                    "branchId": docID,
-                    "activeConsumerBranchId": docID,
-                    "branchCode": trimmedCode.isEmpty ? "PP-\(docID.prefix(6).uppercased())" : trimmedCode,
-                    "nameAr": trimmedAr,
-                    "nameEn": trimmedEn,
-                    "activeConsumerBranchNameAr": trimmedAr,
-                    "activeConsumerBranchNameEn": trimmedEn,
-                    "updatedAt": FieldValue.serverTimestamp(),
-                    "updatedBy": uid
-                ], forDocument: configRef, merge: true)
-            }
-
-            let group = DispatchGroup()
-
-            if isDefault {
-                group.enter()
-                Firestore.firestore().collection(kPPBranchesCol).whereField("isDefault", isEqualTo: true).getDocuments { snapshot, _ in
-                    if let docs = snapshot?.documents {
-                        for doc in docs where doc.documentID != docID {
-                            batch.updateData(["isDefault": false], forDocument: doc.reference)
-                        }
-                    }
-                    group.leave()
-                }
-            }
-
-            if isConsumerAppStock {
-                group.enter()
-                Firestore.firestore().collection(kPPBranchesCol).whereField("isConsumerAppStock", isEqualTo: true).getDocuments { snapshot, _ in
-                    if let docs = snapshot?.documents {
-                        for doc in docs where doc.documentID != docID {
-                            batch.updateData(["isConsumerAppStock": false], forDocument: doc.reference)
-                        }
-                    }
-                    group.leave()
-                }
-            }
-
-            group.notify(queue: .main) {
-                batch.commit { [weak self] error in
-                    guard let self else { return }
-                    DispatchQueue.main.async {
-                        self.isSaving = false
-                        if let error {
-                            self.validationError = error.localizedDescription
-                            self.showToast(error.localizedDescription, isError: true)
-                            let errorHaptic = UINotificationFeedbackGenerator()
-                            errorHaptic.notificationOccurred(.error)
-                        } else {
-                            self.writeSaveAuditLog(branchID: docID, isNew: !self.isEditing)
-                            if self.isConsumerAppStock {
-                                Functions.functions(region: "us-central1").httpsCallable("syncConsumerBranchStock").call(["branchId": docID]) { _, _ in }
-                            }
-                            let successHaptic = UINotificationFeedbackGenerator()
-                            successHaptic.notificationOccurred(.success)
-                            let msg = self.isEditing ? Language.get("Branches_Updated", alter: "تم تحديث بيانات الفرع") : Language.get("Branches_Created", alter: "تم إنشاء الفرع بنجاح")
-                            self.onSaved?(msg)
-                        }
-                    }
-                }
-            }
+    private func handleBranchSaveCompletion(error: (any Error)?, docID: String) {
+        self.isSaving = false
+        if let error {
+            self.validationError = error.localizedDescription
+            self.showToast(error.localizedDescription, isError: true)
+            let errorHaptic = UINotificationFeedbackGenerator()
+            errorHaptic.notificationOccurred(.error)
         } else {
-            ref.setData(payload, merge: true) { [weak self] error in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    self.isSaving = false
-                    if let error {
-                        self.validationError = error.localizedDescription
-                        self.showToast(error.localizedDescription, isError: true)
-                        let errorHaptic = UINotificationFeedbackGenerator()
-                        errorHaptic.notificationOccurred(.error)
-                    } else {
-                        self.writeSaveAuditLog(branchID: docID, isNew: !self.isEditing)
-                        let successHaptic = UINotificationFeedbackGenerator()
-                        successHaptic.notificationOccurred(.success)
-                        let msg = self.isEditing ? Language.get("Branches_Updated", alter: "تم تحديث بيانات الفرع") : Language.get("Branches_Created", alter: "تم إنشاء الفرع بنجاح")
-                        self.onSaved?(msg)
-                    }
-                }
+            if self.isDefault && self.isActive {
+                PPBranchContextManager.shared().applySystemDefaultBranchChange(docID, completion: nil)
+            } else {
+                PPBranchContextManager.shared().reloadAvailableBranches(completion: nil)
             }
+            if self.isConsumerAppStock {
+                Functions.functions(region: "us-central1").httpsCallable("syncConsumerBranchStock").call(["branchId": docID]) { _, _ in }
+            }
+            let successHaptic = UINotificationFeedbackGenerator()
+            successHaptic.notificationOccurred(.success)
+            let msg = self.isEditing ? Language.get("Branches_Updated", alter: "تم تحديث بيانات الفرع") : Language.get("Branches_Created", alter: "تم إنشاء الفرع بنجاح")
+            self.onSaved?(msg)
         }
     }
 
-    private func writeSaveAuditLog(branchID: String, isNew: Bool) {
-        let uid = Auth.auth().currentUser?.uid ?? ""
-        Firestore.firestore().collection("AdminAuditLogs").document().setData([
-            "action": isNew ? "create_branch" : "update_branch",
-            "targetCollection": kPPBranchesCol,
-            "targetId": branchID,
-            "adminUid": uid,
-            "stockMode": stockMode == .branch ? "branch" : "perAgent",
-            "isDefault": isDefault,
-            "isConsumerAppStock": isConsumerAppStock,
-            "isActive": isActive,
-            "hasCoordinates": hasCoordinates,
-            "latitude": latitude ?? 0,
-            "longitude": longitude ?? 0,
-            "timestamp": FieldValue.serverTimestamp()
-        ])
+    private nonisolated static func fetchBranchIDsToClear(
+        in collectionName: String,
+        whereField field: String,
+        excluding docID: String
+    ) async -> [String] {
+        let snapshot = try? await Firestore.firestore()
+            .collection(collectionName)
+            .whereField(field, isEqualTo: true)
+            .getDocuments()
+        return (snapshot?.documents ?? [])
+            .map(\.documentID)
+            .filter { $0 != docID }
     }
 }
 

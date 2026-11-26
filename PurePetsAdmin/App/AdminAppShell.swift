@@ -351,7 +351,16 @@ struct AdminAppShell: View {
     }
 
     private func currentPuryScreenContext() -> PuryScreenContext {
-        let branchId = (session.scope["branchId"] as? String) ?? (session.scope["branch"] as? String)
+        let activeBranchID = BranchContextStore.shared.activeBranch?.branchID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultBranchID = BranchContextStore.shared.systemDefaultBranch?.branchID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let scopeBranchID = (session.scope["defaultBranchId"] as? String)
+            ?? (session.scope["branchId"] as? String)
+            ?? (session.scope["branch"] as? String)
+        let branchId = [activeBranchID, defaultBranchID, scopeBranchID]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && $0 != "main_store" && $0 != "all_branches" }
         if let route = router.presentedRoute {
             switch route {
             case .hotel:

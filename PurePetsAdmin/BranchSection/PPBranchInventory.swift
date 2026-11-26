@@ -12,6 +12,137 @@ import SwiftUI
 import FirebaseFirestore
 import FirebaseFunctions
 
+// MARK: - Canonical Branch Stock & Resolution Rules
+
+/// Pure, unit-testable authority for branch identity and stock resolution
+/// across Admin Catalog (Products, Food, Live Pets, Medicines) and POS.
+public enum PPBranchInventoryResolver {
+    /// Normalizes a branch identifier, rejecting empty strings and legacy pseudo-IDs
+    /// (`"main_store"`, `"all_branches"`).
+    public static func canonicalBranchID(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        let lower = trimmed.lowercased()
+        if lower == "main_store" || lower == "all_branches" || lower == "main store" {
+            return nil
+        }
+        return trimmed
+    }
+
+    /// Resolves the operational branch ID for Admin screens & sheets, preferring an explicit
+    /// real branch, then active branch, then system Main Branch (`isDefault == true`), or a sole branch.
+    public static func resolveWorkingBranchID(
+        explicitBranchID: String? = nil,
+        activeBranchID: String?,
+        systemDefaultBranchID: String?,
+        availableBranchIDs: [String] = [],
+        needsBranchSelection: Bool = false
+    ) -> String? {
+        if let explicit = canonicalBranchID(explicitBranchID) {
+            return explicit
+        }
+        if let active = canonicalBranchID(activeBranchID) {
+            return active
+        }
+        guard !needsBranchSelection else { return nil }
+        if let systemDefault = canonicalBranchID(systemDefaultBranchID) {
+            return systemDefault
+        }
+        let canonical = availableBranchIDs.compactMap(canonicalBranchID)
+        if canonical.count == 1 {
+            return canonical.first
+        }
+        return nil
+    }
+
+    /// Unified stock lookup for Admin Catalog tabs (Products, Food, Live Pets, Medicines).
+    /// Always reads from the active branch projection without falling back to consumer-synced
+    /// `petAccessories.quantity` or `petAccessories.noStock`.
+    public static func resolveCatalogBranchStock(
+        activeBranchID: String?,
+        projectionBranchID: String?,
+        branchRecord: PPBranchInventory?
+    ) -> Int {
+        guard let selectedBranch = canonicalBranchID(activeBranchID),
+              canonicalBranchID(projectionBranchID) == selectedBranch else {
+            return 0
+        }
+        return max(0, branchRecord?.availableQuantity ?? 0)
+    }
+
+    /// Unified out-of-stock state for Admin Catalog cards and filters across all 4 tabs.
+    public static func isCatalogOutOfStock(
+        activeBranchID: String?,
+        projectionBranchID: String?,
+        branchRecord: PPBranchInventory?
+    ) -> Bool {
+        let stock = resolveCatalogBranchStock(
+            activeBranchID: activeBranchID,
+            projectionBranchID: projectionBranchID,
+            branchRecord: branchRecord
+        )
+        return stock <= 0 || (branchRecord?.noStock == true)
+    }
+
+    /// Authoritative POS stock resolution aligned with Infra `transactions.js` & `posIntegrity.js`.
+    /// Intentionally ignores global `petAccessories.noStock` (which `syncConsumerBranchStock` mutates
+    /// for the Consumer App branch) and never inflates Live Pet `branchInventory` stock from global `quantity`.
+    public static func resolvePOSBranchStock(
+        catalogActive: Bool,
+        isBlocked: Bool,
+        isDeleted: Bool,
+        isDisabled: Bool,
+        isArchived: Bool,
+        catalogQuantity: Int,
+        itemHomeBranchID: String?,
+        activeBranchID: String?,
+        projectionBranchID: String?,
+        branchRecord: PPBranchInventory?
+    ) -> Int {
+        guard catalogActive && !isBlocked && !isDeleted && !isDisabled && !isArchived else {
+            return 0
+        }
+        guard let branchId = canonicalBranchID(activeBranchID),
+              canonicalBranchID(projectionBranchID) == branchId else {
+            return 0
+        }
+        if let branchRecord {
+            return (branchRecord.noStock || branchRecord.availableQuantity <= 0)
+                ? 0
+                : branchRecord.availableQuantity
+        }
+        // Matches Infra transactions.js: fall back to catalog quantity only when the product's
+        // canonical home branch equals the active branch and no branchInventory doc exists yet.
+        if canonicalBranchID(itemHomeBranchID) == branchId {
+            return max(0, catalogQuantity)
+        }
+        return 0
+    }
+
+    /// Strict branch check for individually tracked live pet units in POS & Detail views.
+    public static func isLivePetUnitInBranch(
+        unitBranchID: String,
+        fallbackBranchID: String,
+        activeBranchID: String?,
+        activeBranchIsDefault: Bool,
+        sellingPrice: Double = 1
+    ) -> Bool {
+        guard sellingPrice > 0 else { return false }
+        guard let targetBranch = canonicalBranchID(activeBranchID) else {
+            return false
+        }
+        let resolvedCandidate = canonicalBranchID(unitBranchID) ?? canonicalBranchID(fallbackBranchID)
+        guard let unitBranch = resolvedCandidate else {
+            // Truly unlocated legacy unit (empty or `"main_store"` / `"all_branches"` sentinel):
+            // expose only in the active system Main Branch.
+            return activeBranchIsDefault
+        }
+        return unitBranch == targetBranch
+    }
+}
+
 // MARK: - Branch Inventory Record
 
 public struct PPBranchInventory: Identifiable, Hashable, Sendable {
@@ -106,22 +237,34 @@ public struct PPBranchInventory: Identifiable, Hashable, Sendable {
         self.barcode = (dictionary["barcode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.category = (dictionary["category"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         
-        func count(_ key: String, default fallback: Int = 0) -> Int? {
-            guard let value = dictionary[key] else { return fallback }
-            guard let number = value as? NSNumber, number.doubleValue.isFinite,
-                  number.doubleValue >= 0, number.doubleValue <= 9_007_199_254_740_991,
-                  number.doubleValue.rounded(.towardZero) == number.doubleValue else { return nil }
-            return number.intValue
+        func countDouble(_ key: String, default fallback: Double = 0) -> Double? {
+            guard let value = dictionary[key], !(value is NSNull) else { return fallback }
+            guard let number = value as? NSNumber else { return nil }
+            let d = number.doubleValue
+            guard d.isFinite, d >= 0, d <= 9_000_000_000_000_000.0 else { return nil }
+            return d
         }
-        guard let rawQty = count("quantity"), let rawReserved = count("reservedQuantity"),
-              let rawDamaged = count("damagedQuantity"), let rawExpired = count("expiredQuantity"),
-              let rawQuarantine = count("quarantineQuantity"), let rawSupplierReturn = count("supplierReturnQuantity") else { return nil }
-        let nonSellable = rawReserved + rawDamaged + rawExpired + rawQuarantine + rawSupplierReturn
-        guard let rawAvailable = count("availableQuantity", default: max(0, rawQty - nonSellable)),
-              let rawOnHand = count("onHandQuantity", default: rawQty),
-              rawOnHand == rawAvailable + nonSellable,
-              let revision = count("projectionRevision", default: 1),
-              let minimum = count("minimumStock"), let maximum = count("maximumStock") else { return nil }
+        guard let rawQtyD = countDouble("quantity"), let rawReservedD = countDouble("reservedQuantity"),
+              let rawDamagedD = countDouble("damagedQuantity"), let rawExpiredD = countDouble("expiredQuantity"),
+              let rawQuarantineD = countDouble("quarantineQuantity"), let rawSupplierReturnD = countDouble("supplierReturnQuantity") else { return nil }
+        let nonSellableD = rawReservedD + rawDamagedD + rawExpiredD + rawQuarantineD + rawSupplierReturnD
+        guard let rawAvailableD = countDouble("availableQuantity", default: max(0, rawQtyD - nonSellableD)),
+              let rawOnHandD = countDouble("onHandQuantity", default: rawQtyD),
+              abs(rawOnHandD - (rawAvailableD + nonSellableD)) <= 0.002,
+              let revisionD = countDouble("projectionRevision", default: 1),
+              let minimumD = countDouble("minimumStock"),
+              let maximumD = countDouble("maximumStock") else { return nil }
+        let rawQty = Int(floor(rawQtyD))
+        let rawReserved = Int(floor(rawReservedD))
+        let rawDamaged = Int(floor(rawDamagedD))
+        let rawExpired = Int(floor(rawExpiredD))
+        let rawQuarantine = Int(floor(rawQuarantineD))
+        let rawSupplierReturn = Int(floor(rawSupplierReturnD))
+        let rawAvailable = Int(floor(rawAvailableD))
+        let rawOnHand = Int(floor(rawOnHandD))
+        let revision = Int(floor(revisionD))
+        let minimum = Int(floor(minimumD))
+        let maximum = Int(floor(maximumD))
 
         self.quantity = max(0, rawQty)
         self.reservedQuantity = max(0, rawReserved)
@@ -371,14 +514,22 @@ public final class PPBranchInventoryService: ObservableObject {
 
                 guard let documents = snapshot?.documents else { return }
                 var newMap: [String: PPBranchInventory] = [:]
+                var skippedInvalidDocs = 0
                 for doc in documents {
                     guard let record = PPBranchInventory(dictionary: doc.data(), documentId: doc.documentID),
                           record.branchId == branchId, newMap[record.productId] == nil else {
+                        skippedInvalidDocs += 1
+                        continue
+                    }
+                    newMap[record.productId] = record
+                }
+                if skippedInvalidDocs > 0 {
+                    print("⚠️ [PPBranchInventory] Skipped \(skippedInvalidDocs) malformed/mismatched doc(s) for branch \(branchId)")
+                    if !documents.isEmpty && newMap.isEmpty {
                         self.inventoryError = Language.get("Inventory_ProjectionUnavailable", alter: "تعذر التحقق من رصيد الفرع. أعد تحميل المخزون.")
                         self.isServerConfirmed = false
                         return
                     }
-                    newMap[record.productId] = record
                 }
                 self.inventoryMap = newMap
                 self.inventoryError = nil
@@ -435,21 +586,16 @@ public final class PPBranchInventoryService: ObservableObject {
     }
 
     /// Returns available stock from the active branch projection.
-    /// If an explicit branch record exists in `inventoryMap`, its available quantity is authoritative.
-    /// If no branch-specific record exists, falls back to the catalog quantity for unsegmented stock
-    /// in `main_store` or global view, returning 0 for unstocked secondary branches.
+    /// Fails closed (returns 0) when a concrete branch projection is not matched.
     public func availableStock(for productId: String, fallback: Int = 0) -> Int {
-        guard let currentBranchId = currentBranchId?.trimmingCharacters(in: .whitespacesAndNewlines), !currentBranchId.isEmpty else {
-            return fallback
+        guard let selectedBranch = PPBranchInventoryResolver.canonicalBranchID(currentBranchId) else {
+            return 0
         }
-        if currentBranchId == "all_branches" {
-            return fallback
+        guard currentBranchId?.trimmingCharacters(in: .whitespacesAndNewlines) == selectedBranch else {
+            return 0
         }
         if let record = inventoryMap[productId] {
-            return record.availableQuantity
-        }
-        if currentBranchId == "main_store" {
-            return max(0, fallback)
+            return max(0, record.availableQuantity)
         }
         return 0
     }

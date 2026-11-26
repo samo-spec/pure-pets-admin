@@ -1172,9 +1172,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func populateInitialValues() {
         guard let acc = editingAccessory else {
-            if let active = BranchContextStore.shared.activeBranch {
-                selectedStoreID = active.branchID
-                selectedStoreName = active.localizedName()
+            if let preferredID = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ), let preferredBranch = BranchContextStore.shared.branch(for: preferredID) {
+                selectedStoreID = preferredBranch.branchID
+                selectedStoreName = preferredBranch.localizedName()
             } else {
                 selectedStoreID = "main_store"
                 selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
@@ -3951,10 +3956,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 : (isMedicine ? editingAccessory?.accessoryCategoryID : nil)
         }
         
-        let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
-        let branchIdToSave = (selectedStoreID.isEmpty || selectedStoreID == "main_store") && defaultActiveBranch != "main_store"
-            ? defaultActiveBranch
-            : (selectedStoreID.isEmpty ? "main_store" : selectedStoreID)
+        let defaultActiveBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ) ?? "main_store"
+        let branchIdToSave = PPBranchInventoryResolver.canonicalBranchID(selectedStoreID)
+            ?? defaultActiveBranch
         accessory.storeID = branchIdToSave
         accessory.branchID = branchIdToSave
         if let b = BranchContextStore.shared.branch(for: branchIdToSave) {
@@ -4382,14 +4391,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
 
         let resolvedBranchId: String = {
-            if let bid = accessory.branchID, !bid.isEmpty, bid != "main_store" {
+            if let bid = PPBranchInventoryResolver.canonicalBranchID(accessory.branchID) {
                 if let matched = PPBranchContextManager.shared().branch(withID: bid) {
                     return matched.branchID
                 }
                 return bid
             }
-            if let activeId = BranchContextStore.shared.activeBranch?.branchID, !activeId.isEmpty, activeId != "main_store" {
-                return activeId
+            if let workingID = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) {
+                return workingID
             }
             return accessory.branchID ?? ""
         }()
@@ -4707,10 +4721,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.accessKindType = .typeLivePets
         original.petMainCategoryID = selectedMainKind?.id ?? 0
         original.petSubCategoryID = selectedSubKind?.id ?? 0
-        let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
-        let liveBranchId = (selectedStoreID.isEmpty || selectedStoreID == "main_store") && defaultActiveBranch != "main_store"
-            ? defaultActiveBranch
-            : (selectedStoreID.isEmpty ? "main_store" : selectedStoreID)
+        let liveBranchId = PPBranchInventoryResolver.resolveWorkingBranchID(
+            explicitBranchID: selectedStoreID,
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ) ?? "main_store"
         original.storeID = liveBranchId
         original.branchID = liveBranchId
         if let b = BranchContextStore.shared.branch(for: liveBranchId) {
@@ -11193,7 +11210,7 @@ private struct PPAccessoryStorePickerSheet: View {
                     LazyVStack(spacing: 12) {
                         ForEach(stores, id: \.id) { store in
                             let isSelected = selectedStoreID == store.id
-                            let isMain = store.id == "main_store"
+                            let isMain = store.id == "main_store" || BranchContextStore.shared.branch(for: store.id)?.isDefault == true
 
                             Button {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()

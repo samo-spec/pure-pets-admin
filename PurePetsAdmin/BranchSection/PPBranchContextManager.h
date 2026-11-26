@@ -50,6 +50,10 @@ extern NSNotificationName const PPAvailableBranchesDidChangeNotification;
 /// All branches loaded from Firestore regardless of staff assignment (used for resolution/display).
 @property (nonatomic, copy, readonly) NSArray<PPBranchModel *> *allBranches;
 
+/// Returns the branch marked as system Main Branch (`isDefault == YES`) within the staff member's
+/// available branches (or nil if none is available).
+- (nullable PPBranchModel *)systemDefaultBranch;
+
 // ── Lifecycle & Operations ────────────────────────────────────────────────
 
 /// Finds a branch by branchID or human-readable code across all loaded branches.
@@ -81,6 +85,10 @@ extern NSNotificationName const PPAvailableBranchesDidChangeNotification;
 
 /// Reloads the branches list from Firestore and updates availableBranches.
 - (void)reloadAvailableBranchesWithCompletion:(nullable void(^)(NSArray<PPBranchModel *> *branches))completion;
+
+/// Promotes a newly selected system Main Branch (`isDefault == YES`) as the active working branch
+/// across Admin iOS, persists it for future launches, syncs backend `defaultBranchId`, and broadcasts change.
+- (void)applySystemDefaultBranchChange:(NSString *)branchID completion:(nullable void(^)(BOOL applied))completion;
 
 @end
 

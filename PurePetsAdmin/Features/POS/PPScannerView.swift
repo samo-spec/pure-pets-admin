@@ -2420,10 +2420,11 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
                 // Capture only after the same financial identity survives consecutive frames.
                 if self.isDeviceSteady, !self.isLowLight, self.consecutiveValidFrames >= 3 {
+                    let startTime = self.autoCaptureStartTime ?? Date()
                     if self.autoCaptureStartTime == nil {
-                        self.autoCaptureStartTime = Date()
+                        self.autoCaptureStartTime = startTime
                     }
-                    let elapsed = Date().timeIntervalSince(self.autoCaptureStartTime!)
+                    let elapsed = Date().timeIntervalSince(startTime)
                     let progress = min(CGFloat(elapsed / 0.8), 1.0)
                     self.onAutoCaptureProgress?(progress)
 

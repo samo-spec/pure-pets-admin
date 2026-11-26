@@ -4642,7 +4642,7 @@ private struct iPadCustomerSpatialCockpit: View {
                     // Credit Policy & Terms Section
                     let editingCustomer = viewModel.editingCustomer
                     let editBranchID = !viewModel.editBranchId.isEmpty ? viewModel.editBranchId : (BranchContextStore.shared.activeBranch?.branchID ?? editingCustomer?.branchId ?? "")
-                    let credit = editingCustomer != nil ? creditStore.summary(for: editingCustomer!.id, branchID: editBranchID) : nil
+                    let credit = editingCustomer.flatMap { creditStore.summary(for: $0.id, branchID: editBranchID) }
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {

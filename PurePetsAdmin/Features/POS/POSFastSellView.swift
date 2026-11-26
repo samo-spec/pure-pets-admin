@@ -265,37 +265,33 @@ extension PetAccessory {
     }
 
     /// Authoritative stock for the active branch, honoring branchInventory documents
-    /// for both live pets and standard items, falling back to catalog attributes only when unsegmented.
+    /// for all product types (accessories, food, live pets, medicines) without global consumer leaks.
     @MainActor
     func pos_branchStock(activeBranch: String? = nil) -> Int {
-        guard active && !isBlocked && !isDeleted && !isDisabled && !isArchived && !noStock else {
-            return 0
-        }
-        let branchId = (activeBranch ?? BranchContextStore.shared.activeBranch?.branchID)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let branchId, !branchId.isEmpty {
-            if let branchRecord = PPBranchInventoryService.shared.inventory(for: accessoryID) {
-                if isLivePet && quantity > 0 {
-                    return max(branchRecord.availableQuantity, quantity)
-                }
-                return branchRecord.availableQuantity
-            }
-            let itemBranch = (storeID ?? branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if isLivePet {
-                // Live pets are physical individual specimens strictly bound to their branch.
-                // The server enforces POS_INVENTORY_UNIT_BRANCH_MISMATCH if the unit does not match the active POS branch.
-                if !itemBranch.isEmpty && itemBranch != branchId {
-                    return 0
-                }
-            } else {
-                if branchId != "main_store" && branchId != "all_branches" {
-                    if itemBranch == branchId {
-                        return max(0, quantity)
-                    }
-                    return 0
-                }
-            }
-        }
-        return PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
+        let projection = PPBranchInventoryService.shared
+        let resolvedBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            explicitBranchID: activeBranch,
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        let record = (resolvedBranch != nil && PPBranchInventoryResolver.canonicalBranchID(projection.currentBranchId) == resolvedBranch)
+            ? projection.inventory(for: accessoryID)
+            : nil
+        let homeBranch = (branchID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? branchID : storeID)
+        return PPBranchInventoryResolver.resolvePOSBranchStock(
+            catalogActive: active,
+            isBlocked: isBlocked,
+            isDeleted: isDeleted,
+            isDisabled: isDisabled,
+            isArchived: isArchived,
+            catalogQuantity: quantity,
+            itemHomeBranchID: homeBranch,
+            activeBranchID: resolvedBranch,
+            projectionBranchID: projection.currentBranchId,
+            branchRecord: record
+        )
     }
 
     /// Console parity: `isPosCatalogSellable` (per active branch).
@@ -318,39 +314,329 @@ extension PetAccessory {
         return PPBranchInventoryService.shared.effectiveSellingPrice(for: accessoryID, fallbackPrice: base)
     }
 
-    /// Matches query against name, nameEn, accessoryID, sku, barcode, and variant color attributes (with Arabic normalization).
+    /// Matches query using progressive normalized multi-token, code, variant, and category matching.
     func pos_matchesSearch(_ rawQuery: String) -> Bool {
-        let q = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return true }
-        let normQ = POSFastSellViewNormalization.normalize(q)
-        guard !normQ.isEmpty else { return true }
-
-        if POSFastSellViewNormalization.normalize(name).contains(normQ) { return true }
-        if let nameEn = nameEn, POSFastSellViewNormalization.normalize(nameEn).contains(normQ) { return true }
-        if accessoryID.lowercased().contains(normQ) { return true }
-        if let sku = sku, sku.lowercased().contains(normQ) { return true }
-        if let barcode = barcode, barcode.lowercased().contains(normQ) { return true }
-
-        if let color = pos_variantColor {
-            if POSFastSellViewNormalization.normalize(color.nameAr).contains(normQ) { return true }
-            if POSFastSellViewNormalization.normalize(color.nameEn).contains(normQ) { return true }
-            if color.identifier.lowercased().contains(normQ) { return true }
-        }
-        return false
+        POSCatalogSearchEngine.matches(item: self, rawQuery: rawQuery)
     }
 }
 
-// MARK: - Arabic Search Normalization
+// MARK: - Progressive Arabic/English Search & Ranking Engine
 
 enum POSFastSellViewNormalization {
+    private static let arabicDiacritics: Set<UInt32> = [
+        0x064B, 0x064C, 0x064D, 0x064E,
+        0x064F, 0x0650, 0x0651, 0x0652,
+        0x0653, 0x0654, 0x0655, 0x0670
+    ]
+    private static let spaceScalar: Unicode.Scalar = " "
+    private static let alefScalar: Unicode.Scalar = "ا"
+    private static let haScalar: Unicode.Scalar = "ه"
+    private static let yaScalar: Unicode.Scalar = "ي"
+
     static func normalize(_ text: String) -> String {
-        var s = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        s = s.replacingOccurrences(of: "أ", with: "ا")
-             .replacingOccurrences(of: "إ", with: "ا")
-             .replacingOccurrences(of: "آ", with: "ا")
-             .replacingOccurrences(of: "ة", with: "ه")
-             .replacingOccurrences(of: "ى", with: "ي")
-        return s
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return "" }
+
+        var scalars = String.UnicodeScalarView()
+        scalars.reserveCapacity(trimmed.unicodeScalars.count)
+        var lastWasSpace = false
+
+        for scalar in trimmed.unicodeScalars {
+            let v = scalar.value
+            if arabicDiacritics.contains(v) || v == 0x0640 {
+                continue
+            }
+            if scalar.properties.isWhitespace {
+                if !lastWasSpace {
+                    scalars.append(spaceScalar)
+                    lastWasSpace = true
+                }
+                continue
+            }
+            lastWasSpace = false
+
+            switch v {
+            case 0x0660...0x0669:
+                if let ascii = Unicode.Scalar(0x0030 + (v - 0x0660)) {
+                    scalars.append(ascii)
+                }
+            case 0x06F0...0x06F9:
+                if let ascii = Unicode.Scalar(0x0030 + (v - 0x06F0)) {
+                    scalars.append(ascii)
+                }
+            case 0x0623, 0x0625, 0x0622, 0x0671:
+                scalars.append(alefScalar)
+            case 0x0629:
+                scalars.append(haScalar)
+            case 0x0649:
+                scalars.append(yaScalar)
+            default:
+                scalars.append(scalar)
+            }
+        }
+
+        return String(scalars).trimmingCharacters(in: .whitespaces)
+    }
+
+    static func tokenize(_ normalizedText: String) -> [String] {
+        guard !normalizedText.isEmpty else { return [] }
+        return normalizedText
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+    }
+}
+
+struct POSCatalogSearchIndexEntry: Sendable {
+    let barcode: String
+    let groupBarcodes: [String]
+    let sku: String
+    let accessoryID: String
+    let name: String
+    let nameEn: String
+    let searchTitle: String
+    let nameWords: [String]
+    let optionText: String
+    let optionWords: [String]
+    let categoryText: String
+    let combinedHaystack: String
+    let compactHaystack: String
+}
+
+enum POSCatalogSearchEngine {
+    private static func extractedText(from value: Any?) -> [String] {
+        if let s = value as? String {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? [] : [trimmed]
+        }
+        if let dict = value as? [AnyHashable: Any] {
+            return dict.values.compactMap { v -> String? in
+                guard let str = v as? String else { return nil }
+                let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+        }
+        return []
+    }
+
+    static func makeIndexEntry(for item: PetAccessory) -> POSCatalogSearchIndexEntry {
+        let barcode = POSFastSellViewNormalization.normalize(item.barcode ?? "")
+        var groupBarcodes: [String] = []
+        var groupNames: [String] = []
+
+        if let rawGroups = item.quantityGroups {
+            for dict in rawGroups {
+                let rawBarcode = POSGroupFieldParser.string(dict["barcode"])
+                if !rawBarcode.isEmpty {
+                    groupBarcodes.append(POSFastSellViewNormalization.normalize(rawBarcode))
+                }
+                let gAr = POSGroupFieldParser.string(dict["nameAr"] ?? dict["name_ar"] ?? dict["name"])
+                let gEn = POSGroupFieldParser.string(dict["nameEn"] ?? dict["name_en"])
+                if !gAr.isEmpty { groupNames.append(POSFastSellViewNormalization.normalize(gAr)) }
+                if !gEn.isEmpty { groupNames.append(POSFastSellViewNormalization.normalize(gEn)) }
+            }
+        }
+
+        let sku = POSFastSellViewNormalization.normalize(item.sku ?? "")
+        let accessoryID = POSFastSellViewNormalization.normalize(item.accessoryID)
+        let name = POSFastSellViewNormalization.normalize(item.name)
+        let nameEn = POSFastSellViewNormalization.normalize(item.nameEn ?? "")
+        let searchTitle = POSFastSellViewNormalization.normalize(item.searchTitle)
+
+        var wordSet: [String] = []
+        wordSet.append(contentsOf: POSFastSellViewNormalization.tokenize(name))
+        wordSet.append(contentsOf: POSFastSellViewNormalization.tokenize(nameEn))
+        wordSet.append(contentsOf: POSFastSellViewNormalization.tokenize(searchTitle))
+
+        var optionParts: [String] = []
+        if let color = item.pos_variantColor {
+            optionParts.append(POSFastSellViewNormalization.normalize(color.nameAr))
+            optionParts.append(POSFastSellViewNormalization.normalize(color.nameEn))
+            optionParts.append(POSFastSellViewNormalization.normalize(color.identifier))
+        }
+        if let size = item.size, !size.isEmpty {
+            optionParts.append(POSFastSellViewNormalization.normalize(size))
+        }
+        if let weight = item.weightText, !weight.isEmpty {
+            optionParts.append(POSFastSellViewNormalization.normalize(weight))
+        }
+        if let smartDesc = item.pos_smartVariantDescription, !smartDesc.isEmpty {
+            optionParts.append(POSFastSellViewNormalization.normalize(smartDesc))
+        }
+        if let combo = item.variantCombinationKey, !combo.isEmpty {
+            optionParts.append(POSFastSellViewNormalization.normalize(combo.replacingOccurrences(of: "=", with: " ").replacingOccurrences(of: "|", with: " ")))
+        }
+        if let snapshot = item.selectedOptionsSnapshot {
+            for opt in snapshot {
+                for raw in extractedText(from: opt["optionName"]) + extractedText(from: opt["valueName"]) {
+                    optionParts.append(POSFastSellViewNormalization.normalize(raw))
+                }
+            }
+        }
+        if let selectedOpts = item.selectedOptions {
+            for (k, v) in selectedOpts {
+                optionParts.append(POSFastSellViewNormalization.normalize(k))
+                for raw in extractedText(from: v) {
+                    optionParts.append(POSFastSellViewNormalization.normalize(raw))
+                }
+            }
+        }
+        optionParts.append(contentsOf: groupNames)
+
+        let cleanOptionParts = optionParts.filter { !$0.isEmpty }
+        let optionText = cleanOptionParts.joined(separator: " ")
+        let optionWords = POSFastSellViewNormalization.tokenize(optionText)
+
+        var categoryParts: [String] = []
+        if let catName = item.accessoryCategoryName, !catName.isEmpty {
+            categoryParts.append(POSFastSellViewNormalization.normalize(catName))
+        }
+        if let cat = item.category, !cat.isEmpty {
+            categoryParts.append(POSFastSellViewNormalization.normalize(cat))
+        }
+        if item.isLivePet {
+            categoryParts.append("live pet live pets حيوان حيوانات حيه")
+        } else if item.isFood {
+            categoryParts.append("food طعام اكل غذاء")
+        } else if item.isPetMedicine {
+            categoryParts.append("medicine pharmacy دواء ادويه صيدليه")
+        } else {
+            categoryParts.append("accessory accessories اكسسوار اكسسوارات")
+        }
+        let categoryText = categoryParts.filter { !$0.isEmpty }.joined(separator: " ")
+
+        let combinedParts = [
+            name, nameEn, searchTitle,
+            optionText, categoryText,
+            sku, barcode, accessoryID
+        ] + groupBarcodes
+        let combinedHaystack = combinedParts.filter { !$0.isEmpty }.joined(separator: " ")
+        let compactHaystack = combinedHaystack.replacingOccurrences(of: " ", with: "")
+
+        return POSCatalogSearchIndexEntry(
+            barcode: barcode,
+            groupBarcodes: groupBarcodes,
+            sku: sku,
+            accessoryID: accessoryID,
+            name: name,
+            nameEn: nameEn,
+            searchTitle: searchTitle,
+            nameWords: wordSet,
+            optionText: optionText,
+            optionWords: optionWords,
+            categoryText: categoryText,
+            combinedHaystack: combinedHaystack,
+            compactHaystack: compactHaystack
+        )
+    }
+
+    static func matches(item: PetAccessory, rawQuery: String) -> Bool {
+        let normQ = POSFastSellViewNormalization.normalize(rawQuery)
+        guard !normQ.isEmpty else { return true }
+        let tokens = POSFastSellViewNormalization.tokenize(normQ)
+        let entry = makeIndexEntry(for: item)
+        return matchScore(
+            entry: entry,
+            isDefaultVariant: item.isDefaultVariant,
+            normQuery: normQ,
+            tokens: tokens
+        ) > 0
+    }
+
+    static func matchScore(
+        entry: POSCatalogSearchIndexEntry,
+        isDefaultVariant: Bool,
+        normQuery: String,
+        tokens: [String]
+    ) -> Int {
+        guard !normQuery.isEmpty else { return 0 }
+
+        var codeScore = 0
+        // 1. Exact Barcode or Sell-Unit Barcode
+        if (!entry.barcode.isEmpty && entry.barcode == normQuery) ||
+           entry.groupBarcodes.contains(normQuery) {
+            codeScore = 100_000
+        } else if !entry.sku.isEmpty && entry.sku == normQuery {
+            codeScore = 92_000
+        } else if !entry.accessoryID.isEmpty && entry.accessoryID == normQuery {
+            codeScore = 86_000
+        } else if (!entry.barcode.isEmpty && entry.barcode.hasPrefix(normQuery)) ||
+                  entry.groupBarcodes.contains(where: { $0.hasPrefix(normQuery) }) {
+            codeScore = 78_000
+        } else if (!entry.barcode.isEmpty && entry.barcode.contains(normQuery)) ||
+                  entry.groupBarcodes.contains(where: { $0.contains(normQuery) }) {
+            codeScore = 72_000
+        } else if (!entry.sku.isEmpty && entry.sku.hasPrefix(normQuery)) ||
+                  (!entry.accessoryID.isEmpty && entry.accessoryID.hasPrefix(normQuery)) {
+            codeScore = 68_000
+        } else if (!entry.sku.isEmpty && entry.sku.contains(normQuery)) ||
+                  (!entry.accessoryID.isEmpty && entry.accessoryID.contains(normQuery)) {
+            codeScore = 62_000
+        }
+
+        if codeScore > 0 {
+            return codeScore + (isDefaultVariant ? 50 : 0)
+        }
+
+        // 2. Product Name / Title Progressive Scoring
+        var titleScore = 0
+        if (!entry.name.isEmpty && entry.name == normQuery) ||
+           (!entry.nameEn.isEmpty && entry.nameEn == normQuery) {
+            titleScore = 58_000
+        } else if (!entry.name.isEmpty && entry.name.hasPrefix(normQuery)) ||
+                  (!entry.nameEn.isEmpty && entry.nameEn.hasPrefix(normQuery)) {
+            titleScore = 50_000
+        } else if entry.nameWords.contains(where: { $0.hasPrefix(normQuery) }) {
+            titleScore = 44_000
+        } else if (!entry.name.isEmpty && entry.name.contains(normQuery)) ||
+                  (!entry.nameEn.isEmpty && entry.nameEn.contains(normQuery)) ||
+                  (!entry.searchTitle.isEmpty && entry.searchTitle.contains(normQuery)) {
+            titleScore = 34_000
+        }
+
+        // 3. Variant Option & Unit Naming Scoring
+        var optionScore = 0
+        if !entry.optionText.isEmpty {
+            if entry.optionWords.contains(normQuery) {
+                optionScore = 52_000
+            } else if entry.optionWords.contains(where: { $0.hasPrefix(normQuery) }) {
+                optionScore = 41_000
+            } else if entry.optionText.contains(normQuery) {
+                optionScore = 36_000
+            }
+        }
+
+        // 4. Category / Type Match
+        var categoryScore = 0
+        if !entry.categoryText.isEmpty && entry.categoryText.contains(normQuery) {
+            categoryScore = 20_000
+        }
+
+        // 5. Progressive Multi-Token & Compact Matching
+        var tokenScore = 0
+        if tokens.count > 1 && tokens.allSatisfy({ entry.combinedHaystack.contains($0) }) {
+            var bonus = 0
+            for token in tokens {
+                if entry.nameWords.contains(where: { $0 == token }) {
+                    bonus += 2_000
+                } else if entry.nameWords.contains(where: { $0.hasPrefix(token) }) {
+                    bonus += 1_500
+                } else if entry.optionWords.contains(where: { $0.hasPrefix(token) }) {
+                    bonus += 1_000
+                } else {
+                    bonus += 400
+                }
+            }
+            tokenScore = 26_000 + bonus
+        } else {
+            let compactQ = normQuery.replacingOccurrences(of: " ", with: "")
+            if compactQ.count >= 3 && entry.compactHaystack.contains(compactQ) {
+                tokenScore = 22_000
+            }
+        }
+
+        let best = max(titleScore, max(optionScore, max(categoryScore, tokenScore)))
+        guard best > 0 else { return 0 }
+        return best + (isDefaultVariant ? 50 : 0)
     }
 }
 
@@ -500,6 +786,23 @@ enum POSCatalogFilter: String, CaseIterable, Identifiable {
         case .livePets: return accessory.isLivePet
         }
     }
+
+    static func category(for accessory: PetAccessory) -> POSCatalogFilter {
+        if accessory.isLivePet { return .livePets }
+        if accessory.isPetMedicine { return .medicine }
+        if accessory.isFood { return .food }
+        return .accessories
+    }
+
+    var bitMask: Int {
+        switch self {
+        case .all: return 0b1111
+        case .accessories: return 1 << 0
+        case .food: return 1 << 1
+        case .medicine: return 1 << 2
+        case .livePets: return 1 << 3
+        }
+    }
 }
 
 // MARK: - POS Cart Item
@@ -593,6 +896,13 @@ struct POSQuantityGroupInfo: Equatable, Identifiable {
     }
 }
 
+private func posSafeInt(_ value: Double, fallback: Int = 0) -> Int {
+    guard value.isFinite else { return fallback }
+    let bound = 9_000_000_000_000_000.0
+    let clamped = Swift.min(Swift.max(value, -bound), bound)
+    return Int(clamped)
+}
+
 private enum POSGroupFieldParser {
     static func string(_ val: Any?) -> String {
         if let s = val as? String { return s.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -616,7 +926,11 @@ private enum POSGroupFieldParser {
         guard let val = val else { return nil }
         if let i = val as? Int { return i }
         if let n = val as? NSNumber { return n.intValue }
-        if let d = val as? Double, d.isFinite { return Int(d) }
+        if let d = val as? Double, d.isFinite {
+            let bound = 9_000_000_000_000_000.0
+            let clamped = Swift.min(Swift.max(d, -bound), bound)
+            return Int(clamped)
+        }
         if let s = val as? String, let parsed = Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) { return parsed }
         return nil
     }
@@ -655,12 +969,12 @@ extension PetAccessory {
 
                 var rMinor = POSGroupFieldParser.int(dict["retailPriceMinor"] ?? dict["retail_price_minor"] ?? dict["priceMinor"])
                 if rMinor == nil, let rMajor = POSGroupFieldParser.double(dict["retailPrice"] ?? dict["retail_price"] ?? dict["price"]) {
-                    rMinor = Int(round(rMajor * 100.0))
+                    rMinor = POSMoney.minorUnits(rMajor)
                 }
 
                 var wMinor = POSGroupFieldParser.int(dict["wholesalePriceMinor"] ?? dict["wholesale_price_minor"])
                 if wMinor == nil, let wMajor = POSGroupFieldParser.double(dict["wholesalePrice"] ?? dict["wholesale_price"]) {
-                    wMinor = Int(round(wMajor * 100.0))
+                    wMinor = POSMoney.minorUnits(wMajor)
                 }
 
                 result.append(POSQuantityGroupInfo(
@@ -940,7 +1254,7 @@ struct POSDiscount: Equatable {
         case .percentage:
             let amt = calculateAmount(subtotal: subtotal)
             let formattedAmt = String(format: "%.2f", amt)
-            return "-\(formattedAmt) (\(Int(value))%)"
+            return "-\(formattedAmt) (\(posSafeInt(value))%)"
         case .fixedAmount:
             return "-\(String(format: "%.2f", value)) ر.ق"
         }
@@ -992,20 +1306,23 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
 
     var id: String { unitID }
     var label: String { ringTag.isEmpty ? unitID : ringTag }
-    func isSelectable(in activeBranch: String?) -> Bool {
-        guard sellingPrice > 0 else { return false }
-        let branch = activeBranch?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let branch, !branch.isEmpty else { return true }
-        let effectiveBranch = (!currentBranchId.isEmpty ? currentBranchId : fallbackBranchId).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !effectiveBranch.isEmpty {
-            return effectiveBranch == branch
-        }
-        return true
+    @MainActor
+    func isSelectable(in activeBranch: String?, activeBranchIsDefault: Bool = BranchContextStore.shared.activeBranch?.isDefault ?? false) -> Bool {
+        PPBranchInventoryResolver.isLivePetUnitInBranch(
+            unitBranchID: currentBranchId,
+            fallbackBranchID: fallbackBranchId,
+            activeBranchID: activeBranch,
+            activeBranchIsDefault: activeBranchIsDefault,
+            sellingPrice: sellingPrice
+        )
     }
 
     @MainActor
     var isSelectable: Bool {
-        isSelectable(in: BranchContextStore.shared.activeBranch?.branchID)
+        isSelectable(
+            in: BranchContextStore.shared.activeBranch?.branchID,
+            activeBranchIsDefault: BranchContextStore.shared.activeBranch?.isDefault ?? false
+        )
     }
 }
 
@@ -1473,24 +1790,54 @@ final class POSFastSellViewModel: ObservableObject {
     @Published private(set) var allAccessories: [PetAccessory] = []
     @Published private(set) var cartItems: [POSCartItem] = []
     private var branchInventoryCancellable: AnyCancellable?
+    private var branchProjectionStatusCancellables = Set<AnyCancellable>()
     private var branchChangeCancellable: AnyCancellable?
     private var creditAuthorizationCancellable: AnyCancellable?
     private var creditBalanceCancellable: AnyCancellable?
+    private var lastObservedBranchID: String? = PPBranchInventoryResolver.canonicalBranchID(BranchContextStore.shared.activeBranch?.branchID)
 
     init() {
         branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
             .dropFirst()
-            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
 
-        branchChangeCancellable = BranchContextStore.shared.$activeBranch
+        PPBranchInventoryService.shared.$currentBranchId
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &branchProjectionStatusCancellables)
+
+        PPBranchInventoryService.shared.$settingsMap
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &branchProjectionStatusCancellables)
+
+        PPBranchInventoryService.shared.$isServerConfirmed
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &branchProjectionStatusCancellables)
+
+        branchChangeCancellable = BranchContextStore.shared.$activeBranch
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newBranch in
                 guard let self = self else { return }
+                let nextBranchID = PPBranchInventoryResolver.canonicalBranchID(newBranch?.branchID)
+                if let previous = self.lastObservedBranchID, previous != nextBranchID, !self.cartItems.isEmpty {
+                    self.cartItems.removeAll()
+                }
+                self.lastObservedBranchID = nextBranchID
                 self.invalidateSubmissionCommand()
                 self.invalidateCreditContext()
                 self.hideCreditReceiptOnSessionChange()
@@ -1549,8 +1896,10 @@ final class POSFastSellViewModel: ObservableObject {
     /// Filter, search, and live catalog presentation states.
     @Published var catalogFilter: POSCatalogFilter = .all
     @Published var catalogSearchText: String = ""
+    @Published private(set) var recentSearchQueries: [String] = []
     @Published private(set) var isCatalogLoading = true
     @Published private(set) var catalogErrorMessage: String?
+    private var searchIndexByID: [String: POSCatalogSearchIndexEntry] = [:]
 
     @Published var selectedCustomer: POSCustomerRecord? = nil {
         didSet { invalidateCreditContext() }
@@ -1803,25 +2152,90 @@ final class POSFastSellViewModel: ObservableObject {
     /// from what was actually sold without crossing an isolation boundary.
     private var submittedCartSnapshot: [POSCartItem] = []
 
-    var searchResults: [PetAccessory] {
-        guard !searchText.isEmpty else { return allAccessories }
-        let q = searchText
-        return allAccessories.filter { $0.pos_matchesSearch(q) }
+    private func searchIndexEntry(for item: PetAccessory) -> POSCatalogSearchIndexEntry {
+        if let cached = searchIndexByID[item.accessoryID] {
+            return cached
+        }
+        let built = POSCatalogSearchEngine.makeIndexEntry(for: item)
+        searchIndexByID[item.accessoryID] = built
+        return built
     }
 
-    /// Sellable, type-filtered catalog for the footer quick-add grid (ordered newest first).
-    var catalogResults: [PetAccessory] {
-        let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return allAccessories.filter { accessory in
-            guard accessory.pos_isSellable, catalogFilter.matches(accessory) else { return false }
-            return accessory.pos_matchesSearch(q)
+    private func searchScore(for item: PetAccessory, normQuery: String, tokens: [String]) -> Int {
+        guard !normQuery.isEmpty else { return 0 }
+        let entry = searchIndexEntry(for: item)
+        return POSCatalogSearchEngine.matchScore(
+            entry: entry,
+            isDefaultVariant: item.isDefaultVariant,
+            normQuery: normQuery,
+            tokens: tokens
+        )
+    }
+
+    func recordSearchHistory(_ rawQuery: String) {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = POSFastSellViewNormalization.normalize(trimmed)
+        guard trimmed.count >= 2, !normalized.isEmpty else { return }
+
+        recentSearchQueries.removeAll {
+            POSFastSellViewNormalization.normalize($0) == normalized
+        }
+        recentSearchQueries.insert(trimmed, at: 0)
+        if recentSearchQueries.count > 6 {
+            recentSearchQueries = Array(recentSearchQueries.prefix(6))
         }
     }
 
-    /// Grouped catalog display items (families and singles) for the quick-add grid.
+    func clearSearchHistory() {
+        recentSearchQueries.removeAll()
+    }
+
+    var searchResults: [PetAccessory] {
+        let normQ = POSFastSellViewNormalization.normalize(searchText)
+        guard !normQ.isEmpty else { return allAccessories }
+        let tokens = POSFastSellViewNormalization.tokenize(normQ)
+        return allAccessories
+            .compactMap { item -> (item: PetAccessory, score: Int)? in
+                let score = searchScore(for: item, normQuery: normQ, tokens: tokens)
+                return score > 0 ? (item, score) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return lhs.item.createdAt > rhs.item.createdAt
+            }
+            .map(\.item)
+    }
+
+    /// Sellable, type-filtered catalog ranked progressively by relevance when searching.
+    var catalogResults: [PetAccessory] {
+        let normQ = POSFastSellViewNormalization.normalize(catalogSearchText)
+        let tokens = POSFastSellViewNormalization.tokenize(normQ)
+        let filtered = allAccessories.filter { $0.pos_isSellable && catalogFilter.matches($0) }
+        guard !normQ.isEmpty else { return filtered }
+
+        return filtered
+            .compactMap { item -> (item: PetAccessory, score: Int)? in
+                let score = searchScore(for: item, normQuery: normQ, tokens: tokens)
+                return score > 0 ? (item, score) : nil
+            }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return lhs.item.createdAt > rhs.item.createdAt
+            }
+            .map(\.item)
+    }
+
+    /// Grouped catalog display items (families and singles) sorted by progressive search relevance.
     var catalogDisplayItems: [POSCatalogDisplayItem] {
-        let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let matchingLens = allAccessories.filter { catalogFilter.matches($0) }
+        buildCatalogDisplayItems(for: catalogFilter, rawQuery: catalogSearchText)
+    }
+
+    func buildCatalogDisplayItems(for filter: POSCatalogFilter, rawQuery: String) -> [POSCatalogDisplayItem] {
+        let rawTrimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normQ = POSFastSellViewNormalization.normalize(rawTrimmed)
+        let tokens = POSFastSellViewNormalization.tokenize(normQ)
+        let isSearching = !normQ.isEmpty
+        let matchingLens = allAccessories.filter { filter.matches($0) }
 
         var familyOrder: [String] = []
         var families: [String: [PetAccessory]] = [:]
@@ -1840,7 +2254,14 @@ final class POSFastSellViewModel: ObservableObject {
             }
         }
 
-        var result: [POSCatalogDisplayItem] = []
+        struct RankedDisplayItem {
+            let item: POSCatalogDisplayItem
+            let score: Int
+            let createdAt: Date
+            let sortID: String
+        }
+
+        var ranked: [RankedDisplayItem] = []
 
         // Process families
         for familyId in familyOrder {
@@ -1850,27 +2271,61 @@ final class POSFastSellViewModel: ObservableObject {
                     ? lhs.accessoryID < rhs.accessoryID
                     : lhs.variantSortOrder < rhs.variantSortOrder
             }
-            let defaultOrFirst = sortedMembers.first(where: { $0.isDefaultVariant }) ?? sortedMembers[0]
-
-            // Check search match across members
-            guard q.isEmpty || sortedMembers.contains(where: { $0.pos_matchesSearch(q) }) else { continue }
+            let defaultOrFirst = sortedMembers.first(where: { $0.isDefaultVariant }) ?? sortedMembers.first ?? allMembers[0]
 
             if sortedMembers.count > 1 {
-                // Multi-variant family: include if at least one member is sellable in this active branch
-                if sortedMembers.contains(where: { $0.pos_isSellable }) {
-                    let needle = q.lowercased()
-                    let targetMember = sortedMembers.first(where: {
-                        let b = ($0.barcode ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        let s = ($0.sku ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        let i = $0.accessoryID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                        return (!b.isEmpty && b == needle) || (!s.isEmpty && s == needle) || (!i.isEmpty && i == needle)
-                    }) ?? sortedMembers.first(where: { $0.pos_matchesSearch(q) }) ?? defaultOrFirst
+                guard sortedMembers.contains(where: { $0.pos_isSellable }) else { continue }
 
-                    result.append(.family(familyId: familyId, members: sortedMembers, primary: targetMember))
+                if isSearching {
+                    var bestScore = 0
+                    var bestSellableMatch: (member: PetAccessory, score: Int)?
+                    var bestAnyMatch: (member: PetAccessory, score: Int)?
+
+                    for member in sortedMembers {
+                        let s = searchScore(for: member, normQuery: normQ, tokens: tokens)
+                        guard s > 0 else { continue }
+                        if s > bestScore { bestScore = s }
+                        if bestAnyMatch.map({ s > $0.score }) ?? true {
+                            bestAnyMatch = (member, s)
+                        }
+                        if member.pos_isSellable && (bestSellableMatch.map({ s > $0.score }) ?? true) {
+                            bestSellableMatch = (member, s)
+                        }
+                    }
+
+                    guard bestScore > 0 else { continue }
+                    let targetMember = bestSellableMatch?.member ?? bestAnyMatch?.member ?? defaultOrFirst
+                    ranked.append(RankedDisplayItem(
+                        item: .family(familyId: familyId, members: sortedMembers, primary: targetMember),
+                        score: bestScore,
+                        createdAt: defaultOrFirst.createdAt,
+                        sortID: familyId
+                    ))
+                } else {
+                    ranked.append(RankedDisplayItem(
+                        item: .family(familyId: familyId, members: sortedMembers, primary: defaultOrFirst),
+                        score: 0,
+                        createdAt: defaultOrFirst.createdAt,
+                        sortID: familyId
+                    ))
                 }
-            } else {
-                if let single = sortedMembers.first, single.pos_isSellable {
-                    result.append(.single(single))
+            } else if let single = sortedMembers.first, single.pos_isSellable {
+                if isSearching {
+                    let s = searchScore(for: single, normQuery: normQ, tokens: tokens)
+                    guard s > 0 else { continue }
+                    ranked.append(RankedDisplayItem(
+                        item: .single(single),
+                        score: s,
+                        createdAt: single.createdAt,
+                        sortID: single.accessoryID
+                    ))
+                } else {
+                    ranked.append(RankedDisplayItem(
+                        item: .single(single),
+                        score: 0,
+                        createdAt: single.createdAt,
+                        sortID: single.accessoryID
+                    ))
                 }
             }
         }
@@ -1878,11 +2333,85 @@ final class POSFastSellViewModel: ObservableObject {
         // Process singles
         for item in singles {
             guard item.pos_isSellable else { continue }
-            guard q.isEmpty || item.pos_matchesSearch(q) else { continue }
-            result.append(.single(item))
+            if isSearching {
+                let s = searchScore(for: item, normQuery: normQ, tokens: tokens)
+                guard s > 0 else { continue }
+                ranked.append(RankedDisplayItem(
+                    item: .single(item),
+                    score: s,
+                    createdAt: item.createdAt,
+                    sortID: item.accessoryID
+                ))
+            } else {
+                ranked.append(RankedDisplayItem(
+                    item: .single(item),
+                    score: 0,
+                    createdAt: item.createdAt,
+                    sortID: item.accessoryID
+                ))
+            }
         }
 
-        return result
+        if isSearching {
+            ranked.sort { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+                return lhs.sortID > rhs.sortID
+            }
+        }
+
+        return ranked.map(\.item)
+    }
+
+    func progressiveDisplayCounts(for rawQuery: String) -> [POSCatalogFilter: Int] {
+        let normQ = POSFastSellViewNormalization.normalize(rawQuery)
+        let tokens = POSFastSellViewNormalization.tokenize(normQ)
+        let isSearching = !normQ.isEmpty
+
+        var counts: [POSCatalogFilter: Int] = [
+            .all: 0, .accessories: 0, .food: 0, .medicine: 0, .livePets: 0
+        ]
+
+        struct FamilyAccum {
+            var sellableMask: Int = 0
+            var matchMask: Int = 0
+        }
+        var familyAccums: [String: FamilyAccum] = [:]
+
+        for item in allAccessories {
+            let category = POSCatalogFilter.category(for: item)
+            let bit = category.bitMask
+            let sellable = item.pos_isSellable
+            let matched = !isSearching || searchScore(for: item, normQuery: normQ, tokens: tokens) > 0
+            let familyId = (item.productFamilyId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if familyId.isEmpty {
+                if sellable && matched {
+                    counts[.all, default: 0] += 1
+                    counts[category, default: 0] += 1
+                }
+            } else {
+                var acc = familyAccums[familyId] ?? FamilyAccum()
+                if sellable { acc.sellableMask |= bit }
+                if matched { acc.matchMask |= bit }
+                familyAccums[familyId] = acc
+            }
+        }
+
+        let subFilters: [POSCatalogFilter] = [.accessories, .food, .medicine, .livePets]
+        for acc in familyAccums.values {
+            if acc.sellableMask != 0 && acc.matchMask != 0 {
+                counts[.all, default: 0] += 1
+            }
+            for filter in subFilters {
+                let bit = filter.bitMask
+                if (acc.sellableMask & bit) != 0 && (acc.matchMask & bit) != 0 {
+                    counts[filter, default: 0] += 1
+                }
+            }
+        }
+
+        return counts
     }
 
     func variantMembers(for product: PetAccessory) -> [PetAccessory] {
@@ -1978,17 +2507,17 @@ final class POSFastSellViewModel: ObservableObject {
         // 2. Barcode is the scanner's native identifier, so it wins outright: a SKU
         // that happens to equal another product's barcode must not compete.
         let barcodeMatches = sellable.filter { ($0.barcode ?? "").lowercased() == needle }
-        if barcodeMatches.count == 1 { return .resolved(barcodeMatches[0], selectedGroup: nil) }
+        if barcodeMatches.count == 1, let firstMatch = barcodeMatches.first { return .resolved(firstMatch, selectedGroup: nil) }
         if barcodeMatches.count > 1 { return .ambiguous(barcodeMatches) }
 
         let skuMatches = sellable.filter { ($0.sku ?? "").lowercased() == needle }
-        if skuMatches.count == 1 { return .resolved(skuMatches[0], selectedGroup: nil) }
+        if skuMatches.count == 1, let firstMatch = skuMatches.first { return .resolved(firstMatch, selectedGroup: nil) }
         if skuMatches.count > 1 { return .ambiguous(skuMatches) }
 
         // Last resort: the document id, which the previous substring search also
         // accepted. Exact only.
         let idMatches = sellable.filter { $0.accessoryID.lowercased() == needle }
-        if idMatches.count == 1 { return .resolved(idMatches[0], selectedGroup: nil) }
+        if idMatches.count == 1, let firstMatch = idMatches.first { return .resolved(firstMatch, selectedGroup: nil) }
         if idMatches.count > 1 { return .ambiguous(idMatches) }
 
         return .notFound
@@ -2073,6 +2602,12 @@ final class POSFastSellViewModel: ObservableObject {
                     }
                     return a.accessoryID > b.accessoryID
                 }
+                var builtIndex: [String: POSCatalogSearchIndexEntry] = [:]
+                builtIndex.reserveCapacity(self.allAccessories.count)
+                for item in self.allAccessories {
+                    builtIndex[item.accessoryID] = POSCatalogSearchEngine.makeIndexEntry(for: item)
+                }
+                self.searchIndexByID = builtIndex
                 let sellableCount = self.allAccessories.filter { $0.pos_isSellable }.count
                 POSLogger.info("catalog.snapshot.received", category: "catalog", message: "Catalog loaded: \(self.allAccessories.count) items (\(sellableCount) sellable in active branch)", metadata: [
                     "total": self.allAccessories.count,
@@ -3155,7 +3690,7 @@ final class POSFastSellViewModel: ObservableObject {
                 payload["variantDisplayName"] = liveLabel
             } else {
                 let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let rawVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+                let rawVariant = smartDesc.flatMap { $0.isEmpty ? nil : $0 } ?? variantName
                 if !rawVariant.isEmpty && !rawVariant.lowercased().contains("catalog_") && rawVariant != item.accessory.accessoryID && rawVariant != item.accessory.sku {
                     payload["variantOptionName"] = rawVariant
                     payload["variantDisplayName"] = rawVariant
@@ -3901,7 +4436,7 @@ struct AdminPOSFastSellView: View {
             PPTactileNumberPadSheet(
                 config: config,
                 onCommit: { newQty in
-                    let target = Int(newQty)
+                    let target = posSafeInt(newQty)
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     viewModel.updateQuantity(item, newQuantity: target)
                     quantityEditingItem = nil
@@ -4630,13 +5165,337 @@ struct AdminPOSFastSellView: View {
 
     // MARK: - Catalog Command
 
+    private var trimmedCatalogQuery: String {
+        viewModel.catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isProgressiveSearchEngaged: Bool {
+        isSearchFocused || !trimmedCatalogQuery.isEmpty || viewModel.catalogFilter != .all
+    }
+
     private var omniSearchAndFilterBar: some View {
-        searchAndScanView
+        let query = trimmedCatalogQuery
+        let engaged = isProgressiveSearchEngaged
+        let facetCounts = engaged ? viewModel.progressiveDisplayCounts(for: query) : [:]
+        let quickHits: [POSCatalogDisplayItem] = (isSearchFocused && !query.isEmpty)
+            ? Array(viewModel.buildCatalogDisplayItems(for: viewModel.catalogFilter, rawQuery: query).prefix(6))
+            : []
+
+        return VStack(alignment: .leading, spacing: 10) {
+            searchAndScanView
+
+            if engaged {
+                progressiveSearchTray(
+                    query: query,
+                    facetCounts: facetCounts,
+                    quickHits: quickHits
+                )
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(contextDisclosureAnimation, value: isProgressiveSearchEngaged)
+        .animation(contextDisclosureAnimation, value: query.isEmpty)
         .onChange(of: viewModel.catalogSearchText) { value in
             if let lastScannedCode, value != lastScannedCode {
                 self.lastScannedCode = nil
             }
         }
+    }
+
+    @ViewBuilder
+    private func progressiveSearchTray(
+        query: String,
+        facetCounts: [POSCatalogFilter: Int],
+        quickHits: [POSCatalogDisplayItem]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // 1. Progressive category narrowing chips with live result counts
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(POSCatalogFilter.allCases) { filter in
+                        progressiveCategoryChip(
+                            filter: filter,
+                            count: facetCounts[filter, default: 0],
+                            isQueryActive: !query.isEmpty
+                        )
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Language.get("POS_CatalogFilterRail", alter: "فلاتر الكتالوج"))
+
+            // 2. Context-aware progressive row: recent history / instant quick hits / cross-category recovery
+            if isSearchFocused && query.isEmpty && !viewModel.recentSearchQueries.isEmpty {
+                progressiveRecentSearchesRow
+            } else if !query.isEmpty {
+                let currentCount = facetCounts[viewModel.catalogFilter, default: 0]
+                let allCount = facetCounts[.all, default: 0]
+                if currentCount == 0 && viewModel.catalogFilter != .all && allCount > 0 {
+                    progressiveScopeRecoveryButton(allCount: allCount)
+                } else if isSearchFocused && !quickHits.isEmpty {
+                    progressiveQuickHitsStrip(quickHits, totalMatches: currentCount)
+                }
+            }
+        }
+        .accessibilityIdentifier("admin.pos.search.progressiveTray")
+    }
+
+    private func progressiveCategoryChip(
+        filter: POSCatalogFilter,
+        count: Int,
+        isQueryActive: Bool
+    ) -> some View {
+        let selected = viewModel.catalogFilter == filter
+        let dimmed = isQueryActive && count == 0 && !selected
+
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if reduceMotion {
+                viewModel.catalogFilter = filter
+            } else {
+                withAnimation(AdminAnimation.fast) {
+                    viewModel.catalogFilter = filter
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: filter.symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(Language.get(filter.titleKey, alter: filter.fallbackTitle))
+                    .font(PPBrandFont.medium(13, relativeTo: .caption))
+                    .lineLimit(1)
+                Text("\(count)".normalizedEnglishDigits)
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 1.5)
+                    .background(
+                        (selected ? filter.accentColor.opacity(0.18) : commandSeparator.opacity(0.75)),
+                        in: Capsule()
+                    )
+            }
+            .foregroundStyle(selected ? filter.accentColor : commandInk)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .frame(minHeight: AdminTouchTarget.minimum)
+            .background(
+                selected ? filter.accentColor.opacity(0.12) : commandSearchBackground,
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        selected ? filter.accentColor.opacity(0.55) : commandSeparator,
+                        lineWidth: selected ? 1.25 : AdminStroke.thin
+                    )
+            )
+            .opacity(dimmed ? 0.52 : 1.0)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel("\(Language.get(filter.titleKey, alter: filter.fallbackTitle)), \(count)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("admin.pos.search.filter.\(filter.rawValue)")
+    }
+
+    private var progressiveRecentSearchesRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(Language.get("POS_Search_RecentTitle", alter: "عمليات بحث أخيرة"))
+                        .font(PPBrandFont.medium(12, relativeTo: .caption2))
+                }
+                .foregroundStyle(commandMuted)
+                .padding(.trailing, 2)
+
+                ForEach(viewModel.recentSearchQueries, id: \.self) { recent in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.catalogSearchText = recent
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(commandMuted)
+                            Text(recent)
+                                .font(PPBrandFont.medium(13, relativeTo: .caption))
+                                .foregroundStyle(commandInk)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: AdminTouchTarget.minimum)
+                        .background(commandSearchBackground, in: Capsule())
+                        .overlay(
+                            Capsule().strokeBorder(commandSeparator, lineWidth: AdminStroke.thin)
+                        )
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(POSVariantPressStyle())
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.clearSearchHistory()
+                } label: {
+                    Text(Language.get("POS_Search_ClearHistory", alter: "مسح السجل"))
+                        .font(PPBrandFont.medium(12, relativeTo: .caption2))
+                        .foregroundStyle(commandAccent)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: AdminTouchTarget.minimum)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(POSVariantPressStyle())
+            }
+        }
+    }
+
+    private func progressiveScopeRecoveryButton(allCount: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if reduceMotion {
+                viewModel.catalogFilter = .all
+            } else {
+                withAnimation(AdminAnimation.fast) {
+                    viewModel.catalogFilter = .all
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "scope")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(commandAccent)
+                Text(
+                    String(
+                        format: Language.get("POS_Search_SearchAllScopeFormat", alter: "ابحث في كل المنتجات (%ld)"),
+                        allCount
+                    )
+                )
+                .font(PPBrandFont.medium(13.5, relativeTo: .caption))
+                .foregroundStyle(commandInk)
+                .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(commandAccent)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
+            .background(commandAccent.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(commandAccent.opacity(0.32), lineWidth: AdminStroke.thin)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityIdentifier("admin.pos.search.expandScope")
+    }
+
+    private func progressiveQuickHitsStrip(_ items: [POSCatalogDisplayItem], totalMatches: Int) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(commandAccent)
+                Text(Language.get("POS_Search_QuickMatches", alter: "نتائج فورية"))
+                    .font(PPBrandFont.medium(12, relativeTo: .caption2))
+                    .foregroundStyle(commandMuted)
+                Spacer(minLength: 4)
+                Text(
+                    String(
+                        format: Language.get("POS_Search_ProgressiveCount_Format", alter: "%ld مطابقة"),
+                        totalMatches
+                    )
+                )
+                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(commandAccent)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(items) { item in
+                        progressiveQuickHitPill(item)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+    }
+
+    private func progressiveQuickHitPill(_ item: POSCatalogDisplayItem) -> some View {
+        let accessory = item.primaryAccessory
+        let priceLabel = viewModel.priceText(for: item, currency: { formatCurrency($0) })
+        let inCart = viewModel.quantityInCart(for: item)
+        let stock = max(0, item.totalBranchStock - inCart)
+
+        return Button {
+            viewModel.recordSearchHistory(trimmedCatalogQuery)
+            handleCatalogItemTap(item, from: .zero)
+        } label: {
+            HStack(spacing: 8) {
+                POSCatalogThumbnail(accessory: accessory)
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text(accessory.name)
+                            .font(PPBrandFont.medium(13, relativeTo: .caption))
+                            .foregroundStyle(commandInk)
+                            .lineLimit(1)
+                        if item.isFamily {
+                            Text(
+                                String(
+                                    format: Language.get("POS_Search_VariantsCount_Format", alter: "%ld خيارات"),
+                                    item.members.count
+                                )
+                            )
+                            .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(commandAccent)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(commandAccent.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        Text(priceLabel)
+                            .font(.system(size: 11.5, weight: .bold).monospacedDigit())
+                            .foregroundStyle(commandAccent)
+                            .lineLimit(1)
+                        if !item.isFamily {
+                            Text(
+                                stock > 0
+                                    ? String(format: Language.get("POS_RemainingStockFormat", alter: "المتبقي: %d"), stock)
+                                    : Language.get("POS_OutOfStock", alter: "نفد المخزون")
+                            )
+                            .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                            .foregroundStyle(stock > 0 ? commandMuted : Color(uiColor: .ppError))
+                            .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: 185, alignment: .leading)
+
+                Image(systemName: item.isFamily || accessory.pos_isIndividuallyTrackedLivePet ? "chevron.forward.circle.fill" : "plus.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(commandAccent)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .frame(minHeight: AdminTouchTarget.minimum)
+            .background(commandSearchBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(inCart > 0 ? commandAccent.opacity(0.5) : commandSeparator, lineWidth: AdminStroke.thin)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(POSVariantPressStyle())
+        .accessibilityLabel("\(accessory.name), \(priceLabel)")
     }
 
     private var searchAndScanView: some View {
@@ -4675,7 +5534,9 @@ struct AdminPOSFastSellView: View {
     private var catalogSearchField: some View {
         HStack(spacing: 8) {
             POSHeaderIcon(.search, size: 18)
-                .foregroundStyle(commandMuted)
+                .foregroundStyle(isSearchFocused ? commandAccent : commandMuted)
+                .scaleEffect(isSearchFocused && !reduceMotion ? 1.06 : 1.0)
+                .animation(contextDisclosureAnimation, value: isSearchFocused)
             TextField(searchPrompt, text: $viewModel.catalogSearchText,
                       prompt: Text(""))
                 .font(Language.isRTL() ? PPBrandFont.regular(18, relativeTo: .body) : .system(size: commandEnglishSearchSize))
@@ -4716,9 +5577,23 @@ struct AdminPOSFastSellView: View {
                 .buttonStyle(POSVariantPressStyle())
                 .accessibilityLabel(Language.get("POS_Search_Clear", alter: nil))
             }
+            if isSearchFocused {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismissKeyboard()
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(commandAccent)
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(POSVariantPressStyle())
+                .accessibilityLabel(Language.get("Dismiss_Keyboard", alter: "إخفاء لوحة المفاتيح"))
+            }
         }
         .padding(.leading, 12)
-        .padding(.trailing, viewModel.catalogSearchText.isEmpty ? 12 : 0)
+        .padding(.trailing, (viewModel.catalogSearchText.isEmpty && !isSearchFocused) ? 12 : 4)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, minHeight: 56)
     }
@@ -4933,24 +5808,26 @@ struct AdminPOSFastSellView: View {
             .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
         } else if !viewModel.catalogSearchText.isEmpty || viewModel.catalogFilter != .all {
             let isScannedResult = lastScannedCode == viewModel.catalogSearchText
-            HStack(spacing: AdminSpacing.xs) {
-                Image(systemName: isScannedResult ? "checkmark.circle.fill" : viewModel.catalogFilter.symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(isScannedResult ? Color(uiColor: .ppSuccess) : viewModel.catalogFilter.accentColor)
-                Text(
-                    String(
-                        format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"),
-                        viewModel.catalogResults.count
+            if isScannedResult || !isProgressiveSearchEngaged {
+                HStack(spacing: AdminSpacing.xs) {
+                    Image(systemName: isScannedResult ? "checkmark.circle.fill" : viewModel.catalogFilter.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isScannedResult ? Color(uiColor: .ppSuccess) : viewModel.catalogFilter.accentColor)
+                    Text(
+                        String(
+                            format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"),
+                            viewModel.catalogResults.count
+                        )
                     )
-                )
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-                .monospacedDigit()
-                Spacer()
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .monospacedDigit()
+                    Spacer()
+                }
+                .padding(.horizontal, AdminSpacing.sm)
+                .frame(minHeight: 28)
+                .accessibilityElement(children: .combine)
             }
-            .padding(.horizontal, AdminSpacing.sm)
-            .frame(minHeight: 28)
-            .accessibilityElement(children: .combine)
         }
     }
 
@@ -4958,14 +5835,60 @@ struct AdminPOSFastSellView: View {
     private var catalogGrid: some View {
         let items = viewModel.catalogDisplayItems
         if items.isEmpty {
-            VStack(spacing: AdminSpacing.xs) {
-                Image(systemName: "tray")
-                    .font(.system(size: 24, weight: .light))
-                    .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+            let trimmed = trimmedCatalogQuery
+            let counts = !trimmed.isEmpty ? viewModel.progressiveDisplayCounts(for: trimmed) : [:]
+            let allCount = counts[.all, default: 0]
+            VStack(spacing: AdminSpacing.sm) {
+                Image(systemName: trimmed.isEmpty ? "tray" : "magnifyingglass")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.55))
                 Text(Language.get("POS_CatalogEmpty", alter: "لا توجد عناصر مطابقة"))
                     .font(AdminType.captionBold)
                     .foregroundColor(AdminSurface.secondaryText)
+                if !trimmed.isEmpty || viewModel.catalogFilter != .all {
+                    Text(Language.get("POS_CatalogEmptyHint", alter: "غيّر عبارة البحث أو حاول لاحقاً"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                }
+                HStack(spacing: AdminSpacing.sm) {
+                    if viewModel.catalogFilter != .all && allCount > 0 {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.catalogFilter = .all
+                        } label: {
+                            Text(
+                                String(
+                                    format: Language.get("POS_Search_SearchAllScopeFormat", alter: "ابحث في كل المنتجات (%ld)"),
+                                    allCount
+                                )
+                            )
+                            .font(AdminType.captionBold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: AdminTouchTarget.minimum)
+                            .background(AdminSurface.primary, in: Capsule())
+                        }
+                        .buttonStyle(POSVariantPressStyle())
+                    }
+                    if !trimmed.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.catalogSearchText = ""
+                            lastScannedCode = nil
+                        } label: {
+                            Text(Language.get("POS_Search_Clear", alter: "مسح البحث"))
+                                .font(AdminType.captionBold)
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: AdminTouchTarget.minimum)
+                                .background(AdminSurface.primarySoft, in: Capsule())
+                        }
+                        .buttonStyle(POSVariantPressStyle())
+                    }
+                }
             }
+            .padding(.horizontal, AdminSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -5061,6 +5984,7 @@ struct AdminPOSFastSellView: View {
         dismissKeyboard()
         let query = viewModel.catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
+        viewModel.recordSearchHistory(query)
 
         switch viewModel.resolveScannedCode(query) {
         case .resolved(let product, let matchedGroup):
@@ -5347,7 +6271,9 @@ private struct POSApexFlightDeck: View {
     private var balance: Double { POSMoney.round(received - viewModel.cartTotal) }
     private var hasShortfall: Bool { isCash && balance < 0 }
     private var selectedMethod: (key: String, title: String, icon: String) {
-        viewModel.paymentMethods.first { $0.key == viewModel.selectedPaymentMethod } ?? viewModel.paymentMethods[0]
+        viewModel.paymentMethods.first { $0.key == viewModel.selectedPaymentMethod }
+            ?? viewModel.paymentMethods.first
+            ?? (key: "cash", title: Language.get("POS_Cash", alter: "نقدي"), icon: "banknote.fill")
     }
     private var primaryPaymentMethods: [(key: String, title: String, icon: String)] {
         viewModel.paymentMethods.filter { ["cash", "card", "credit"].contains($0.key) }
@@ -9930,7 +10856,7 @@ struct POSDiscountSheet: View {
                                     selectedPercentPreset = preset
                                 }
                             } label: {
-                                Text("\(Int(preset))%")
+                                Text("\(posSafeInt(preset))%")
                                     .font(AdminType.captionBold)
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 8)
@@ -10001,7 +10927,7 @@ struct POSDiscountSheet: View {
                     Spacer()
 
                     HStack(spacing: 2) {
-                        Text("\(Int(percentageValue))")
+                        Text("\(posSafeInt(percentageValue))")
                             .font(Font.custom("Beiruti-Bold", size: 36, relativeTo: .title))
                             .foregroundColor(AdminSurface.primaryText)
                             .monospacedDigit()
@@ -10107,7 +11033,7 @@ struct POSDiscountSheet: View {
                     Text(Language.get("POS_Discount", alter: "الخصم:"))
                         .font(AdminType.caption1)
                     if discountType == .percentage {
-                        Text("(\(Int(percentageValue))%)")
+                        Text("(\(posSafeInt(percentageValue))%)")
                             .font(AdminType.caption2Bold)
                     }
                 }
@@ -12057,8 +12983,16 @@ private struct POSWholesaleRequestsSheet: View {
                         nameEn: item["nameEn"] as? String ?? ""
                     )
                 }
-                if let first = branches.first, !branches.contains(where: { $0.id == branchID }) {
-                    branchID = first.id
+                let activeID = BranchContextStore.shared.activeBranch?.branchID
+                let defaultID = BranchContextStore.shared.systemDefaultBranch?.branchID
+                if !branches.contains(where: { $0.id == branchID }) {
+                    if let activeID, branches.contains(where: { $0.id == activeID }) {
+                        branchID = activeID
+                    } else if let defaultID, branches.contains(where: { $0.id == defaultID }) {
+                        branchID = defaultID
+                    } else if let first = branches.first {
+                        branchID = first.id
+                    }
                 }
                 if branches.isEmpty {
                     errorText = rtl ? "لا توجد فروع مصرح لك بمراجعة طلبات الجملة فيها." : "No authorized wholesale branches available."

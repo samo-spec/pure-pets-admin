@@ -331,10 +331,12 @@ struct ProformaDraft: Equatable, Sendable {
         guard items.count <= 50, notes.count <= 2000,
               Set(items.map(\.productId)).count == items.count,
               items.flatMap(\.unitIds).count <= 50 else { throw ProformaFailure.invalidInput }
+        let minQuantity = Decimal(sign: .plus, exponent: -3, significand: 1)
+        let maxMoney = Decimal(sign: .plus, exponent: -2, significand: 99_999_999_999)
         var normalized = items
         for index in normalized.indices {
-            guard let quantity = ProformaDecimal.parse(normalized[index].quantity, scale: 3, allowZero: false), quantity >= Decimal(string: "0.001")!, quantity <= 100000,
-                  let price = ProformaDecimal.parse(normalized[index].unitPrice, scale: 2), price <= Decimal(string: "999999999.99")!,
+            guard let quantity = ProformaDecimal.parse(normalized[index].quantity, scale: 3, allowZero: false), quantity >= minQuantity, quantity <= 100000,
+                  let price = ProformaDecimal.parse(normalized[index].unitPrice, scale: 2), price <= maxMoney,
                   let rate = ProformaDecimal.parse(normalized[index].taxRate, scale: 2), rate <= 100,
                   !normalized[index].requiresWholeQuantity || quantity == ProformaDecimal.rounded(quantity, scale: 0),
                   normalized[index].unitIds.isEmpty || quantity == Decimal(normalized[index].unitIds.count) else { throw ProformaFailure.invalidInput }
@@ -343,7 +345,10 @@ struct ProformaDraft: Equatable, Sendable {
             normalized[index].taxRate = ProformaDecimal.string(rate)
             let gross = normalized[index].unitPrices.isEmpty ? ProformaDecimal.rounded(price * quantity) : normalized[index].unitPrices.reduce(Decimal(0)) { $0 + (ProformaDecimal.parse($1.unitPrice, scale: 2) ?? 0) }
             _ = try normalized[index].discount.amount(on: gross)
-            normalized[index].discount.value = ProformaDecimal.string(ProformaDecimal.parse(normalized[index].discount.value, scale: 2)!)
+            guard let discountValue = ProformaDecimal.parse(normalized[index].discount.value, scale: 2) else {
+                throw ProformaFailure.invalidInput
+            }
+            normalized[index].discount.value = ProformaDecimal.string(discountValue)
         }
         _ = try estimatedTotals()
         var normalizedDiscount = discount
@@ -356,10 +361,12 @@ struct ProformaDraft: Equatable, Sendable {
     /// Local estimates mirror Infra cent rounding/allocation; only server totals are exported or converted.
     func estimatedTotals() throws -> ProformaTotals {
         func cents(_ amount: Decimal) -> Int { NSDecimalNumber(decimal: ProformaDecimal.rounded(amount) * 100).intValue }
+        let minQuantity = Decimal(sign: .plus, exponent: -3, significand: 1)
+        let maxMoney = Decimal(sign: .plus, exponent: -2, significand: 99_999_999_999)
         var gross: [Int] = []; var lineDiscounts: [Int] = []; var taxRates: [Decimal] = []
         for line in items {
-            guard let quantity = ProformaDecimal.parse(line.quantity, scale: 3, allowZero: false), quantity >= Decimal(string: "0.001")!, quantity <= 100000,
-                  let price = ProformaDecimal.parse(line.unitPrice, scale: 2), price <= Decimal(string: "999999999.99")!,
+            guard let quantity = ProformaDecimal.parse(line.quantity, scale: 3, allowZero: false), quantity >= minQuantity, quantity <= 100000,
+                  let price = ProformaDecimal.parse(line.unitPrice, scale: 2), price <= maxMoney,
                   let rate = ProformaDecimal.parse(line.taxRate, scale: 2), rate <= 100,
                   !line.requiresWholeQuantity || quantity == ProformaDecimal.rounded(quantity, scale: 0),
                   line.unitIds.isEmpty || quantity == Decimal(line.unitIds.count) else { throw ProformaFailure.invalidInput }
@@ -368,7 +375,7 @@ struct ProformaDraft: Equatable, Sendable {
                 return amount + unitPrice
             }
             let roundedGross = ProformaDecimal.rounded(amount)
-            guard roundedGross <= Decimal(string: "999999999.99")! else { throw ProformaFailure.invalidInput }
+            guard roundedGross <= maxMoney else { throw ProformaFailure.invalidInput }
             gross.append(cents(roundedGross)); lineDiscounts.append(cents(try line.discount.amount(on: roundedGross))); taxRates.append(rate)
         }
         let subtotal = gross.reduce(0, +)

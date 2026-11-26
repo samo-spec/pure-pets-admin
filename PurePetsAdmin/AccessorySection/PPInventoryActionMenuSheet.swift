@@ -87,21 +87,37 @@ public struct PPInventoryActionMenuSheet: View {
         (staff?.hasPermission(kStaffPermPosSell) ?? false) || (staff?.isAdmin() ?? false)
     }
 
-    private var displayQuantity: Int {
-        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let activeBranch, !activeBranch.isEmpty {
-            if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
-                return branchRecord.availableQuantity
-            }
-            if activeBranch != "main_store" && activeBranch != "all_branches" {
-                let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if itemBranch == activeBranch {
-                    return max(0, item.quantity)
-                }
-                return 0
-            }
+    private var activeResolvedBranchID: String? {
+        PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+    }
+
+    private var activeBranchRecord: PPBranchInventory? {
+        guard let activeResolvedBranchID,
+              PPBranchInventoryResolver.canonicalBranchID(PPBranchInventoryService.shared.currentBranchId) == activeResolvedBranchID else {
+            return nil
         }
-        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        return PPBranchInventoryService.shared.inventory(for: item.accessoryID)
+    }
+
+    private var displayQuantity: Int {
+        PPBranchInventoryResolver.resolveCatalogBranchStock(
+            activeBranchID: activeResolvedBranchID,
+            projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+            branchRecord: activeBranchRecord
+        )
+    }
+
+    private var isBranchOutOfStock: Bool {
+        PPBranchInventoryResolver.isCatalogOutOfStock(
+            activeBranchID: activeResolvedBranchID,
+            projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+            branchRecord: activeBranchRecord
+        )
     }
 
     private var itemDisplayName: String {
@@ -113,7 +129,7 @@ public struct PPInventoryActionMenuSheet: View {
 
     private var stockTone: Color {
         let qty = displayQuantity
-        if qty <= 0 || (item.noStock && !item.isLivePet) {
+        if qty <= 0 || (!item.isLivePet && isBranchOutOfStock) {
             return Color(uiColor: .ppError)
         } else if qty <= 3 {
             return Color(uiColor: .ppWarning)
@@ -124,7 +140,7 @@ public struct PPInventoryActionMenuSheet: View {
 
     private var stockStatusText: String {
         let qty = displayQuantity
-        if (item.noStock && !item.isLivePet) || qty <= 0 {
+        if (!item.isLivePet && isBranchOutOfStock) || qty <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if qty <= 3 {
             return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%@)"), qty.englishDigits).normalizedEnglishDigits
@@ -395,7 +411,7 @@ public struct PPInventoryActionMenuSheet: View {
                     HStack(spacing: 12) {
                         Image(systemName: "number.square.fill")
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                            .foregroundColor(isBranchOutOfStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
@@ -410,13 +426,13 @@ public struct PPInventoryActionMenuSheet: View {
 
                         Spacer()
 
-                        Text(item.noStock ? Language.get("Disabled_Status", alter: "معطل") : Language.get("Active_Status", alter: "نشط"))
+                        Text(isBranchOutOfStock ? Language.get("Disabled_Status", alter: "معطل") : Language.get("Active_Status", alter: "نشط"))
                             .font(AdminType.caption2Bold)
-                            .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                            .foregroundColor(isBranchOutOfStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.12),
+                                (isBranchOutOfStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.12),
                                 in: Capsule()
                             )
                     }
@@ -779,11 +795,11 @@ public struct PPInventoryActionMenuSheet: View {
                                         Text(Language.get("EditQuantity", alter: "تعديل الكمية"))
                                             .font(PPBrandFont.bold(size: 14))
                                     }
-                                    .foregroundColor(item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError))
+                                    .foregroundColor(isBranchOutOfStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError))
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
                                     .background(
-                                        (item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)).opacity(0.10),
+                                        (isBranchOutOfStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)).opacity(0.10),
                                         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     )
                                 }
@@ -969,7 +985,8 @@ public struct PPInventoryActionMenuSheet: View {
 
     private func specimenIdentityCard(compact: Bool) -> some View {
         let aura = CategorySpecimenAuraTheme.resolve(for: item)
-        let branchName = item.resolvedBranchName()
+        let branchName = activeResolvedBranchID.map { BranchContextStore.shared.localizedBranchName(for: $0, fallback: item.resolvedBranchName()) }
+            ?? item.resolvedBranchName()
 
         return HStack(spacing: 12) {
             // Specimen Image Box

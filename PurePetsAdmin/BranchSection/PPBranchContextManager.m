@@ -16,6 +16,7 @@ NSNotificationName const PPActiveBranchDidChangeNotification = @"PPActiveBranchD
 NSNotificationName const PPAvailableBranchesDidChangeNotification = @"PPAvailableBranchesDidChangeNotification";
 
 static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_";
+static NSString * const kPPKnownSystemDefaultBranchStoragePrefix = @"PPAdminLastDefaultBranchID_";
 
 @interface PPBranchContextManager ()
 
@@ -25,6 +26,9 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
 @property (nonatomic, strong, nullable, readwrite) PPStaffDoc *currentStaff;
 @property (nonatomic, assign, readwrite) BOOL isGlobalAccess;
 @property (nonatomic, assign, readwrite) BOOL needsBranchSelection;
+@property (nonatomic, strong, nullable) id<FIRListenerRegistration> branchesListener;
+@property (nonatomic, assign) NSUInteger resolutionGeneration;
+@property (nonatomic, assign) BOOL hasPostedInitialActiveBranch;
 
 @end
 
@@ -46,11 +50,27 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
         _activeBranch = nil;
         _isGlobalAccess = NO;
         _needsBranchSelection = NO;
+        _resolutionGeneration = 0;
+        _hasPostedInitialActiveBranch = NO;
     }
     return self;
 }
 
+- (void)dealloc {
+    [_branchesListener remove];
+    _branchesListener = nil;
+}
+
 #pragma mark - Getters
+
+- (nullable PPBranchModel *)systemDefaultBranch {
+    for (PPBranchModel *b in self.availableBranches) {
+        if (b.isDefault) {
+            return b;
+        }
+    }
+    return nil;
+}
 
 - (NSString *)currentBranchID {
     return self.activeBranch.branchID;
@@ -76,11 +96,21 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
     return [kPPActiveBranchStoragePrefix stringByAppendingString:uid];
 }
 
+- (NSString *)defaultTrackingKeyForCurrentStaff {
+    NSString *uid = self.currentStaff.uid;
+    if (uid.length == 0) {
+        uid = [FIRAuth auth].currentUser.uid ?: @"guest";
+    }
+    return [kPPKnownSystemDefaultBranchStoragePrefix stringByAppendingString:uid];
+}
+
 #pragma mark - Configuration & Fetching
 
 - (void)configureWithStaff:(nullable PPStaffDoc *)staff completion:(nullable void(^)(void))completion {
     self.currentStaff = staff;
     self.isGlobalAccess = staff != nil && (staff.isAdmin || staff.hasGlobalScope);
+    self.resolutionGeneration += 1;
+    [self startBranchesListenerIfNeeded];
 
     [self reloadAvailableBranchesWithCompletion:^(NSArray<PPBranchModel *> *branches) {
         if (completion) {
@@ -89,38 +119,73 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
     }];
 }
 
-- (void)reloadAvailableBranchesWithCompletion:(nullable void(^)(NSArray<PPBranchModel *> *branches))completion {
+- (void)startBranchesListenerIfNeeded {
+    [self.branchesListener remove];
+    self.branchesListener = nil;
+
+    NSUInteger generation = self.resolutionGeneration;
+    __weak typeof(self) weakSelf = self;
     FIRFirestore *db = [FIRFirestore firestore];
-    
+    self.branchesListener = [[db collectionWithPath:@"branches"] addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf || strongSelf.resolutionGeneration != generation) return;
+            if (error || !snapshot) return;
+            [strongSelf processBranchesSnapshot:snapshot];
+        });
+    }];
+}
+
+- (void)processBranchesSnapshot:(FIRQuerySnapshot *)snapshot {
+    NSMutableArray<PPBranchModel *> *all = [NSMutableArray array];
+    NSMutableArray<PPBranchModel *> *loaded = [NSMutableArray array];
+    for (FIRDocumentSnapshot *doc in snapshot.documents) {
+        PPBranchModel *branch = [PPBranchModel fromDictionary:doc.data withID:doc.documentID];
+        [all addObject:branch];
+        if (branch.isActive) {
+            if (self.isGlobalAccess || [self.currentStaff hasAccessToBranch:branch.branchID]) {
+                [loaded addObject:branch];
+            }
+        }
+    }
+
+    [loaded sortUsingComparator:^NSComparisonResult(PPBranchModel *a, PPBranchModel *b) {
+        if (a.isDefault != b.isDefault) {
+            return a.isDefault ? NSOrderedAscending : NSOrderedDescending;
+        }
+        return [[a localizedName] localizedCaseInsensitiveCompare:[b localizedName]];
+    }];
+
+    self.allBranches = [all copy];
+    self.availableBranches = [loaded copy];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PPAvailableBranchesDidChangeNotification object:self];
+
+    [self resolveActiveBranch];
+}
+
+- (void)reloadAvailableBranchesWithCompletion:(nullable void(^)(NSArray<PPBranchModel *> *branches))completion {
+    NSUInteger generation = self.resolutionGeneration;
+    __weak typeof(self) weakSelf = self;
+    FIRFirestore *db = [FIRFirestore firestore];
+
     [[db collectionWithPath:@"branches"] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (error || !snapshot) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                if (completion) completion(@[]);
+                return;
+            }
+            if (error || !snapshot || strongSelf.resolutionGeneration != generation) {
                 if (completion) {
-                    completion(self.availableBranches ?: @[]);
+                    completion(strongSelf.availableBranches ?: @[]);
                 }
                 return;
             }
 
-            NSMutableArray<PPBranchModel *> *all = [NSMutableArray array];
-            NSMutableArray<PPBranchModel *> *loaded = [NSMutableArray array];
-            for (FIRDocumentSnapshot *doc in snapshot.documents) {
-                PPBranchModel *branch = [PPBranchModel fromDictionary:doc.data withID:doc.documentID];
-                [all addObject:branch];
-                if (branch.isActive) {
-                    if (self.isGlobalAccess || [self.currentStaff hasAccessToBranch:branch.branchID]) {
-                        [loaded addObject:branch];
-                    }
-                }
-            }
-
-            self.allBranches = [all copy];
-            self.availableBranches = [loaded copy];
-            [[NSNotificationCenter defaultCenter] postNotificationName:PPAvailableBranchesDidChangeNotification object:self];
-
-            [self resolveActiveBranch];
+            [strongSelf processBranchesSnapshot:snapshot];
 
             if (completion) {
-                completion(self.availableBranches);
+                completion(strongSelf.availableBranches);
             }
         });
     }];
@@ -168,50 +233,76 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
     return branchID;
 }
 
+- (nullable PPBranchModel *)findAvailableBranchWithID:(nullable NSString *)branchID {
+    if (branchID.length == 0) return nil;
+    for (PPBranchModel *b in self.availableBranches) {
+        if ([b.branchID isEqualToString:branchID]) {
+            return b;
+        }
+    }
+    return nil;
+}
+
 - (void)resolveActiveBranch {
+    NSString *previousBranchID = self.activeBranch.branchID;
+    BOOL previousNeedsSelection = self.needsBranchSelection;
+    BOOL previousIsDefault = self.activeBranch.isDefault;
+    NSString *previousName = self.activeBranch ? [self.activeBranch localizedName] : @"";
+    NSString *previousCode = self.activeBranch.code ?: @"";
+
     if (self.availableBranches.count == 0) {
         self.activeBranch = nil;
         self.needsBranchSelection = NO;
-        [[NSNotificationCenter defaultCenter] postNotificationName:PPActiveBranchDidChangeNotification object:self];
+        if (!self.hasPostedInitialActiveBranch || previousBranchID.length > 0 || previousNeedsSelection) {
+            self.hasPostedInitialActiveBranch = YES;
+            [[NSNotificationCenter defaultCenter] postNotificationName:PPActiveBranchDidChangeNotification object:self];
+        }
         return;
     }
 
     NSString *savedBranchID = [[NSUserDefaults standardUserDefaults] stringForKey:[self persistenceKeyForCurrentStaff]];
+    NSString *lastKnownDefaultID = [[NSUserDefaults standardUserDefaults] stringForKey:[self defaultTrackingKeyForCurrentStaff]];
+    PPBranchModel *systemDefault = [self systemDefaultBranch];
     PPBranchModel *candidate = nil;
 
-    // 1. Saved branch in UserDefaults
-    if (savedBranchID.length > 0) {
-        for (PPBranchModel *b in self.availableBranches) {
-            if ([b.branchID isEqualToString:savedBranchID]) {
-                candidate = b;
-                break;
-            }
+    // 1. If the system Main Branch (`isDefault`) changed (e.g. from Branches screen or Console),
+    // or on first upgrade onto `isDefault` tracking for global staff, promote `systemDefault`.
+    BOOL systemDefaultChanged = (systemDefault != nil) &&
+        (lastKnownDefaultID.length > 0 && ![lastKnownDefaultID isEqualToString:systemDefault.branchID]);
+    BOOL initialGlobalDefaultSync = (systemDefault != nil) &&
+        (lastKnownDefaultID.length == 0) &&
+        self.isGlobalAccess &&
+        ![savedBranchID isEqualToString:systemDefault.branchID];
+
+    if (systemDefaultChanged || initialGlobalDefaultSync) {
+        candidate = systemDefault;
+        if (candidate && ![self.currentStaff.defaultBranchID isEqualToString:candidate.branchID]) {
+            [self syncWorkingBranchToBackend:candidate.branchID completion:nil];
         }
     }
 
-    // 2. Default branch assigned to staff
-    if (!candidate && self.currentStaff.defaultBranchID.length > 0) {
-        for (PPBranchModel *b in self.availableBranches) {
-            if ([b.branchID isEqualToString:self.currentStaff.defaultBranchID]) {
-                candidate = b;
-                break;
-            }
-        }
-    }
-
-    // 3. System default branch (isDefault == YES)
+    // 2. Saved branch in UserDefaults (preserves explicit switcher selection until Main Branch changes)
     if (!candidate) {
-        for (PPBranchModel *b in self.availableBranches) {
-            if (b.isDefault) {
-                candidate = b;
-                break;
-            }
+        candidate = [self findAvailableBranchWithID:savedBranchID];
+    }
+
+    // 3. Fallback priority: for global admins prefer system Main Branch before stale staff default;
+    // for restricted scoped staff prefer their assigned defaultBranchID then system Main Branch.
+    if (!candidate) {
+        if (self.isGlobalAccess) {
+            candidate = systemDefault ?: [self findAvailableBranchWithID:self.currentStaff.defaultBranchID];
+        } else {
+            candidate = [self findAvailableBranchWithID:self.currentStaff.defaultBranchID] ?: systemDefault;
         }
     }
 
     // 4. If exactly one branch available, automatically pick it
     if (!candidate && self.availableBranches.count == 1) {
         candidate = self.availableBranches.firstObject;
+    }
+
+    if (systemDefault) {
+        [[NSUserDefaults standardUserDefaults] setObject:systemDefault.branchID forKey:[self defaultTrackingKeyForCurrentStaff]];
     }
 
     if (candidate) {
@@ -224,10 +315,55 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
         self.needsBranchSelection = (self.availableBranches.count > 1);
     }
 
-    [[NSNotificationCenter defaultCenter] postNotificationName:PPActiveBranchDidChangeNotification object:self];
+    BOOL changed = !self.hasPostedInitialActiveBranch ||
+        ![(previousBranchID ?: @"") isEqualToString:(self.activeBranch.branchID ?: @"")] ||
+        previousNeedsSelection != self.needsBranchSelection ||
+        previousIsDefault != self.activeBranch.isDefault ||
+        ![(previousName ?: @"") isEqualToString:(self.activeBranch ? [self.activeBranch localizedName] : @"")] ||
+        ![(previousCode ?: @"") isEqualToString:(self.activeBranch.code ?: @"")];
+
+    if (changed) {
+        self.hasPostedInitialActiveBranch = YES;
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPActiveBranchDidChangeNotification object:self];
+    }
 }
 
 #pragma mark - Selection
+
+- (void)applySystemDefaultBranchChange:(NSString *)branchID completion:(nullable void(^)(BOOL applied))completion {
+    NSString *trimmed = [branchID stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) {
+        if (completion) completion(NO);
+        return;
+    }
+
+    [[NSUserDefaults standardUserDefaults] setObject:trimmed forKey:[self defaultTrackingKeyForCurrentStaff]];
+
+    PPBranchModel *target = [self findAvailableBranchWithID:trimmed];
+    if (target) {
+        [[NSUserDefaults standardUserDefaults] setObject:trimmed forKey:[self persistenceKeyForCurrentStaff]];
+        BOOL applied = [self selectBranchWithID:trimmed];
+        [self reloadAvailableBranchesWithCompletion:nil];
+        if (completion) completion(applied);
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    [self reloadAvailableBranchesWithCompletion:^(NSArray<PPBranchModel *> * _Nonnull branches) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            if (completion) completion(NO);
+            return;
+        }
+        PPBranchModel *reloadedTarget = [strongSelf findAvailableBranchWithID:trimmed];
+        if (reloadedTarget) {
+            BOOL applied = [strongSelf selectBranchWithID:trimmed];
+            if (completion) completion(applied);
+        } else {
+            if (completion) completion(NO);
+        }
+    }];
+}
 
 - (BOOL)selectBranch:(PPBranchModel *)branch {
     if (!branch) {
@@ -286,8 +422,13 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
 #pragma mark - Reset
 
 - (void)clearContext {
+    self.resolutionGeneration += 1;
+    [self.branchesListener remove];
+    self.branchesListener = nil;
+    self.hasPostedInitialActiveBranch = NO;
     self.activeBranch = nil;
     self.availableBranches = @[];
+    self.allBranches = @[];
     self.currentStaff = nil;
     self.isGlobalAccess = NO;
     self.needsBranchSelection = NO;

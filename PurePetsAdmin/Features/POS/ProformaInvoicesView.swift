@@ -3308,7 +3308,8 @@ struct ProformaConversionSheet: View {
     private var isValidCash: Bool {
         guard paymentMethod == "cash" else { return true }
         guard let received = cashReceivedDecimal else { return false }
-        return received >= invoiceTotalDecimal && received <= Decimal(string: "999999999.99")!
+        let maxMoney = Decimal(sign: .plus, exponent: -2, significand: 99_999_999_999)
+        return received >= invoiceTotalDecimal && received <= maxMoney
     }
 
     var body: some View {
@@ -3360,7 +3361,9 @@ struct ProformaConversionSheet: View {
                             Text(invoice.displayNumber)
                                 .font(PPBeirutiFont.bold(20, relativeTo: .title3))
                                 .environment(\.layoutDirection, .leftToRight)
-                            Text(invoice.customer?.name.isEmpty == false ? invoice.customer!.name : Language.get("Proforma_NoCustomer", alter: "لم يُحدّد العميل"))
+                            let customerNameText = (invoice.customer?.name.isEmpty == false ? invoice.customer?.name : nil)
+                                ?? Language.get("Proforma_NoCustomer", alter: "لم يُحدّد العميل")
+                            Text(customerNameText)
                                 .font(PPBeirutiFont.regular(15, relativeTo: .subheadline))
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
@@ -3874,7 +3877,7 @@ struct ProformaTermsStudioCard: View {
                     .datePickerStyle(.compact)
                     .font(AdminType.body)
                     .disabled(!editable)
-                    .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+                    .environment(\.timeZone, TimeZone(secondsFromGMT: 0) ?? .gmt)
                 }
             }
 

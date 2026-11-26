@@ -145,11 +145,16 @@ public struct QuarantineStudioSheet: View {
     // MARK: - Computed Inventory Metrics
 
     private var branchRecord: PPBranchInventory? {
-        inventoryService.inventory(for: item.accessoryID)
+        let target = resolvedBranchId
+        guard !target.isEmpty,
+              PPBranchInventoryResolver.canonicalBranchID(inventoryService.currentBranchId) == target else {
+            return nil
+        }
+        return inventoryService.inventory(for: item.accessoryID)
     }
 
     private var availableQty: Int {
-        branchRecord?.availableQuantity ?? item.quantity
+        branchRecord?.availableQuantity ?? 0
     }
 
     private var quarantineQty: Int {
@@ -169,7 +174,7 @@ public struct QuarantineStudioSheet: View {
     }
 
     private var onHandQty: Int {
-        branchRecord?.onHandQuantity ?? item.quantity
+        branchRecord?.onHandQuantity ?? 0
     }
 
     private var sourceAvailableCount: Int {
@@ -213,15 +218,13 @@ public struct QuarantineStudioSheet: View {
     }
 
     private var resolvedBranchId: String {
-        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty && trimmed != "all_branches" {
-            return trimmed
-        }
-        if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-            return active
-        }
-        let resolved = item.resolvedBranchID()
-        return !resolved.isEmpty ? resolved : (item.storeID ?? "main_store")
+        PPBranchInventoryResolver.resolveWorkingBranchID(
+            explicitBranchID: branchId,
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID() ?? item.storeID) ?? ""
     }
 
     private var allowedActionTypes: [ActionType] {

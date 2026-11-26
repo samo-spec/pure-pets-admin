@@ -45,41 +45,43 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 
 static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items) {
     NSMutableArray *mappedItems = [NSMutableArray array];
-    for (NSDictionary *item in items) {
+    if (![items isKindOfClass:NSArray.class]) return mappedItems.copy;
+    for (id rawItem in items) {
+        if (![rawItem isKindOfClass:NSDictionary.class]) continue;
+        NSDictionary *item = (NSDictionary *)rawItem;
         NSString *productID = PPSafeString(item[@"itemID"] ?: item[@"itemId"] ?: item[@"productId"]);
         NSString *inventoryMode = PPSafeString(item[@"inventoryMode"]);
+        double rawQty = PPSafeDouble(item[@"quantity"]);
+        double safeQty = (isfinite(rawQty) && rawQty > 0) ? rawQty : 1.0;
         NSMutableDictionary *mapped = [@{
             @"productId": productID,
-            @"quantity": item[@"quantity"] ?: @(1),
+            @"quantity": @(safeQty),
         } mutableCopy];
-        if (item[@"salesChannel"]) mapped[@"salesChannel"] = item[@"salesChannel"];
-        if (item[@"quantityGroupId"]) mapped[@"quantityGroupId"] = item[@"quantityGroupId"];
-        if (item[@"quantityGroupName"]) mapped[@"quantityGroupName"] = item[@"quantityGroupName"];
-        if (item[@"unitsPerGroup"]) mapped[@"unitsPerGroup"] = item[@"unitsPerGroup"];
-        if (item[@"groupQuantity"]) mapped[@"groupQuantity"] = item[@"groupQuantity"];
-        if (item[@"baseUnitQuantity"]) mapped[@"baseUnitQuantity"] = item[@"baseUnitQuantity"];
-        if (item[@"assertedGroupPriceMinor"]) mapped[@"assertedGroupPriceMinor"] = item[@"assertedGroupPriceMinor"];
-        if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
-        if (item[@"lotId"]) mapped[@"lotId"] = item[@"lotId"];
-        if (item[@"lotNumber"]) mapped[@"lotNumber"] = item[@"lotNumber"];
-        if (item[@"variantOptionName"]) mapped[@"variantOptionName"] = item[@"variantOptionName"];
-        if (item[@"variantDisplayName"]) mapped[@"variantDisplayName"] = item[@"variantDisplayName"];
-        if (item[@"selectedOptionsSnapshot"]) mapped[@"selectedOptionsSnapshot"] = item[@"selectedOptionsSnapshot"];
-        if (item[@"variantColorName"]) mapped[@"variantColorName"] = item[@"variantColorName"];
-        if (item[@"variantColorNameEn"]) mapped[@"variantColorNameEn"] = item[@"variantColorNameEn"];
-        if (item[@"variantAxis"]) mapped[@"variantAxis"] = item[@"variantAxis"];
-        if (item[@"size"]) mapped[@"size"] = item[@"size"];
-        if (item[@"weightText"]) mapped[@"weightText"] = item[@"weightText"];
-        if (item[@"isVariant"]) mapped[@"isVariant"] = item[@"isVariant"];
-        if (item[@"name"]) mapped[@"name"] = item[@"name"];
+        NSArray<NSString *> *passthruKeys = @[
+            @"salesChannel", @"quantityGroupId", @"quantityGroupName",
+            @"unitsPerGroup", @"groupQuantity", @"baseUnitQuantity",
+            @"assertedGroupPriceMinor", @"lineTotalMinor", @"lotId",
+            @"lotNumber", @"variantOptionName", @"variantDisplayName",
+            @"selectedOptionsSnapshot", @"variantColorName", @"variantColorNameEn",
+            @"variantAxis", @"size", @"weightText", @"isVariant", @"name"
+        ];
+        for (NSString *key in passthruKeys) {
+            id val = item[key];
+            if (val != nil && ![val isKindOfClass:NSNull.class]) {
+                if ([val isKindOfClass:NSNumber.class] && !isfinite([(NSNumber *)val doubleValue])) continue;
+                mapped[key] = val;
+            }
+        }
 
         if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
             mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
-            NSArray *uids = [item[@"unitIds"] isKindOfClass:NSArray.class] ? item[@"unitIds"] : @[];
+            NSArray *uids = PPSafeArray(item[@"unitIds"]);
             mapped[@"unitIds"] = uids;
-            mapped[@"unitPrices"] = [item[@"unitPrices"] isKindOfClass:NSArray.class] ? item[@"unitPrices"] : @[];
+            mapped[@"unitPrices"] = PPSafeArray(item[@"unitPrices"]);
         } else {
-            mapped[@"unitPrice"] = item[@"price"] ?: item[@"unitPrice"] ?: @(0);
+            double rawUnitPrice = PPSafeDouble(item[@"price"] ?: item[@"unitPrice"]);
+            double safeUnitPrice = (isfinite(rawUnitPrice) && rawUnitPrice >= 0) ? rawUnitPrice : 0.0;
+            mapped[@"unitPrice"] = @(safeUnitPrice);
         }
         [mappedItems addObject:mapped];
     }
@@ -141,7 +143,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         _unitsPerGroup = MAX(1, [PPSafeNumber(dict[@"unitsPerGroup"]) integerValue]);
         _groupQuantity = [PPSafeNumber(dict[@"groupQuantity"]) integerValue] ?: _quantity;
         _baseUnitQuantity = [PPSafeNumber(dict[@"baseUnitQuantity"]) integerValue] ?: (_groupQuantity * _unitsPerGroup);
-        _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)round(_price * 100.0);
+        _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)llround((isfinite(_price) ? _price : 0.0) * 100.0);
         _refundedQuantity = [PPSafeNumber(dict[@"refundedQuantity"]) integerValue];
         double rawRefundedQuantity = PPSafeDouble(dict[@"refundedQuantity"]);
         if (isfinite(rawRefundedQuantity) && rawRefundedQuantity >= 0) _sourceRefundedQuantity = @(rawRefundedQuantity);
@@ -154,8 +156,8 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         _variantColorName = PPSafeString(dict[@"variantColorName"]);
         _variantColorNameEn = PPSafeString(dict[@"variantColorNameEn"]);
         _variantAxis = PPSafeString(dict[@"variantAxis"]);
-        _isVariant = [dict[@"isVariant"] boolValue] || dict[@"productFamilyId"] != nil || _variantOptionName.length > 0 || _selectedOptionsSnapshot.count > 0 || _variantColorName.length > 0 || _size.length > 0 || _weightText.length > 0;
-        _isLivePet = [dict[@"isLivePet"] boolValue] ||
+        _isVariant = [PPSafeNumber(dict[@"isVariant"]) boolValue] || PPSafeString(dict[@"productFamilyId"]).length > 0 || _variantOptionName.length > 0 || _selectedOptionsSnapshot.count > 0 || _variantColorName.length > 0 || _size.length > 0 || _weightText.length > 0;
+        _isLivePet = [PPSafeNumber(dict[@"isLivePet"]) boolValue] ||
                      [PPSafeString(dict[@"itemType"]).lowercaseString isEqualToString:@"live_pet"] ||
                      [PPSafeString(dict[@"itemType"]).lowercaseString isEqualToString:@"livepet"] ||
                      [_inventoryMode.uppercaseString isEqualToString:@"INDIVIDUAL_TRACKED"] ||
@@ -255,7 +257,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         _subSubKindItemID = PPSafeNumber(dict[@"subSubKindItemID"] ?: dict[@"subSubKindItemId"]);
         _subSubKindItemNameAr = PPSafeString(dict[@"subSubKindItemNameAr"] ?: dict[@"subSubKindItemName"]);
         _subSubKindItemNameEn = PPSafeString(dict[@"subSubKindItemNameEn"]);
-        _imageURL = PPSafeString(dict[@"imageURL"] ?: dict[@"mediaURL"] ?: [dict[@"mediaURLs"] firstObject]);
+        _imageURL = PPSafeString(dict[@"imageURL"] ?: dict[@"mediaURL"] ?: PPSafeArray(dict[@"mediaURLs"]).firstObject);
         _mediaURLs = PPPOSStringArray(dict[@"mediaURLs"]);
     }
     return self;
@@ -688,10 +690,12 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
             default: break;
         }
         if (entry.traceID.length > 0) lastTrace = entry.traceID;
-        if ([entry.event containsString:@"submit.success"] && entry.metadata[@"transactionId"]) {
-            lastTxnId = entry.metadata[@"transactionId"];
-            if (entry.metadata[@"durationMs"]) {
-                lastCheckoutDuration = [entry.metadata[@"durationMs"] integerValue];
+        NSString *entryTxnID = PPSafeString(entry.metadata[@"transactionId"]);
+        if ([entry.event containsString:@"submit.success"] && entryTxnID.length > 0) {
+            lastTxnId = entryTxnID;
+            NSNumber *durationNum = PPSafeNumber(entry.metadata[@"durationMs"]);
+            if (durationNum != nil) {
+                lastCheckoutDuration = [durationNum integerValue];
             } else {
                 lastCheckoutDuration = entry.durationMs;
             }
@@ -842,7 +846,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         if (error) { if (completion) completion(nil, error); return; }
         NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
         NSError *encodingError = nil;
-        NSData *json = [data[@"ok"] boolValue] ? [NSJSONSerialization dataWithJSONObject:data options:0 error:&encodingError] : nil;
+        NSData *json = [PPSafeNumber(data[@"ok"]) boolValue] ? [NSJSONSerialization dataWithJSONObject:data options:0 error:&encodingError] : nil;
         if (completion) completion(json, encodingError ?: (json ? nil : PPPOSServiceError(502, @"Invalid credit context.")));
     }];
 }
@@ -851,15 +855,19 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
                               subtotal:(double)subtotal discount:(double)discount deliveryFee:(double)deliveryFee
                                  total:(double)total commandID:(NSString *)commandID branchID:(NSString *)branchID
                           salesChannel:(NSString *)salesChannel settlement:(NSDictionary *)settlement error:(NSError **)error {
-    if (!branchID.length || !commandID.length || ![settlement[@"type"] isEqual:@"credit"] || items.count == 0) {
+    if (![branchID isKindOfClass:NSString.class] || !branchID.length || ![commandID isKindOfClass:NSString.class] || !commandID.length || ![PPSafeString(settlement[@"type"]) isEqualToString:@"credit"] || items.count == 0) {
         if (error) *error = PPPOSServiceError(400, @"An explicit credit command, branch and settlement are required.");
         return nil;
     }
+    double safeSubtotal = (isfinite(subtotal) && subtotal >= 0) ? round(subtotal * 100.0) / 100.0 : 0.0;
+    double safeDiscount = (isfinite(discount) && discount >= 0) ? round(discount * 100.0) / 100.0 : 0.0;
+    double safeTotal = (isfinite(total) && total >= 0) ? round(total * 100.0) / 100.0 : 0.0;
+    double safeDeliveryFee = (isfinite(deliveryFee) && deliveryFee > 0) ? round(deliveryFee * 100.0) / 100.0 : 0.0;
     NSMutableDictionary *payload = [@{ @"items": PPPOSMappedItems(items), @"paymentMethod": @"credit", @"status": @"completed",
-        @"subtotal": @(round(subtotal * 100.0) / 100.0), @"discount": @(round(discount * 100.0) / 100.0),
-        @"total": @(round(total * 100.0) / 100.0), @"currency": @"QAR", @"source": @"admin_ios",
-        @"branchId": branchID, @"salesChannel": salesChannel ?: @"retail", @"settlement": settlement } mutableCopy];
-    if (deliveryFee > 0) payload[@"deliveryFee"] = @(round(deliveryFee * 100.0) / 100.0);
+        @"subtotal": @(safeSubtotal), @"discount": @(safeDiscount),
+        @"total": @(safeTotal), @"currency": @"QAR", @"source": @"admin_ios",
+        @"branchId": branchID, @"salesChannel": PPSafeString(salesChannel).length > 0 ? PPSafeString(salesChannel) : @"retail", @"settlement": settlement } mutableCopy];
+    if (safeDeliveryFee > 0) payload[@"deliveryFee"] = @(safeDeliveryFee);
     NSString *sessionID = [[NSUserDefaults standardUserDefaults] stringForKey:@"PPActiveBranchSessionID"];
     if (sessionID.length) { payload[@"sessionId"] = sessionID; payload[@"branchSessionId"] = sessionID; }
     return [NSJSONSerialization dataWithJSONObject:@{ @"action": @"create", @"commandId": commandID, @"payload": payload } options:NSJSONWritingSortedKeys error:error];
@@ -884,8 +892,8 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         if (error) { if (completion) completion(nil, error); return; }
         NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
         NSString *transactionID = PPSafeString(data[@"transactionId"]);
-        if (![data[@"ok"] boolValue] || [data[@"creditContractVersion"] integerValue] != 1 || !transactionID.length ||
-            ![data[@"currency"] isEqual:@"QAR"] || ![data[@"branchId"] isEqual:payload[@"branchId"]] || ![data[@"customerId"] isEqual:settlement[@"customerId"]]) {
+        if (![PPSafeNumber(data[@"ok"]) boolValue] || [PPSafeNumber(data[@"creditContractVersion"]) integerValue] != 1 || !transactionID.length ||
+            ![PPSafeString(data[@"currency"]) isEqualToString:@"QAR"] || ![PPSafeString(data[@"branchId"]) isEqualToString:PPSafeString(payload[@"branchId"])] || ![PPSafeString(data[@"customerId"]) isEqualToString:PPSafeString(settlement[@"customerId"])]) {
             if (completion) completion(nil, PPPOSServiceError(502, @"Credit result requires authoritative recovery."));
             return;
         }
@@ -894,7 +902,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         if (!json) { if (completion) completion(nil, encodingError); return; }
         PPPOSSubmitResult *value = [PPPOSSubmitResult new]; value.transactionID = transactionID;
         value.total = PPSafeDouble(data[@"total"]); value.currency = @"QAR";
-        value.idempotent = [data[@"idempotent"] boolValue]; value.creditResultJSON = json;
+        value.idempotent = [PPSafeNumber(data[@"idempotent"]) boolValue]; value.creditResultJSON = json;
         if (completion) completion(value, nil);
     }];
 }
@@ -952,7 +960,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
             return;
         }
         NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
-        if (![response[@"ok"] boolValue] ||
+        if (![PPSafeNumber(response[@"ok"]) boolValue] ||
             ![PPSafeString(response[@"inventoryMode"]) isEqualToString:PPPOSIndividualInventoryMode]) {
             NSError *err = PPPOSServiceError(502, @"Invalid exact-unit response.");
             [[PPPOSLogger sharedLogger] errorWithCategory:@"unit"
@@ -981,14 +989,14 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
                                     metadata:@{
                                         @"productId": trimmedProductID,
                                         @"unitsCount": @(units.count),
-                                        @"hasMore": @([response[@"hasMore"] boolValue]),
+                                        @"hasMore": @([PPSafeNumber(response[@"hasMore"]) boolValue]),
                                         @"nextCursor": PPSafeString(response[@"nextCursor"])
                                     }];
 
         if (completion) {
             completion(units.copy,
                        PPSafeString(response[@"nextCursor"]),
-                       [response[@"hasMore"] boolValue],
+                       [PPSafeNumber(response[@"hasMore"]) boolValue],
                        nil);
         }
     }];
@@ -1144,10 +1152,10 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
     }
     NSInteger bulkItemsCount = mappedItems.count - exactUnitItemsCount;
 
-    double roundedSubtotal = round(subtotal * 100.0) / 100.0;
-    double roundedDiscount = round(discount * 100.0) / 100.0;
-    double roundedDeliveryFee = round(deliveryFee * 100.0) / 100.0;
-    double roundedTotal = round(total * 100.0) / 100.0;
+    double roundedSubtotal = (isfinite(subtotal) && subtotal >= 0) ? round(subtotal * 100.0) / 100.0 : 0.0;
+    double roundedDiscount = (isfinite(discount) && discount >= 0) ? round(discount * 100.0) / 100.0 : 0.0;
+    double roundedDeliveryFee = (isfinite(deliveryFee) && deliveryFee >= 0) ? round(deliveryFee * 100.0) / 100.0 : 0.0;
+    double roundedTotal = (isfinite(total) && total >= 0) ? round(total * 100.0) / 100.0 : 0.0;
 
     NSString *effectiveBranchID = branchID;
     if (effectiveBranchID.length == 0) {
@@ -1187,7 +1195,9 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         salePayload[@"branchSessionId"] = activeSessionId;
     }
     if ([paymentMethod isEqualToString:@"cash"]) {
-        salePayload[@"cashReceived"] = @(MAX(roundedTotal, PPSafeDouble(cashReceived)));
+        double safeCashVal = PPSafeDouble(cashReceived);
+        double safeRoundedTotal = isfinite(roundedTotal) ? MAX(0.0, roundedTotal) : 0.0;
+        salePayload[@"cashReceived"] = @(round(MAX(safeRoundedTotal, isfinite(safeCashVal) ? safeCashVal : safeRoundedTotal) * 100.0) / 100.0);
     }
     if (customerName.length > 0) {
         salePayload[@"customerName"] = customerName;
@@ -1262,7 +1272,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
         NSString *transactionID = PPSafeString(response[@"transactionId"]);
         NSString *currency = PPSafeString(response[@"currency"]);
-        if (![response[@"ok"] boolValue] || transactionID.length == 0 || currency.length == 0) {
+        if (![PPSafeNumber(response[@"ok"]) boolValue] || transactionID.length == 0 || currency.length == 0) {
             NSError *respError = PPPOSServiceError(502, @"Invalid transaction response.");
             [[PPPOSLogger sharedLogger] errorWithCategory:@"checkout"
                                                     event:@"order.submit.invalid_response"
@@ -1278,7 +1288,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
         submitResult.transactionID = transactionID;
         submitResult.total = PPSafeDouble(response[@"total"]);
         submitResult.currency = currency;
-        submitResult.idempotent = [response[@"idempotent"] boolValue];
+        submitResult.idempotent = [PPSafeNumber(response[@"idempotent"]) boolValue];
 
         [[PPPOSLogger sharedLogger] logLevel:PPPOSLogLevelInfo
                                     category:@"checkout"
@@ -1346,9 +1356,9 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
                 if (![data isKindOfClass:NSDictionary.class]) continue;
 
                 // Support all schema versions (v2, v3, v4, v5+) and documents with valid items and total
-                NSInteger schemaVersion = [data[@"posSchemaVersion"] integerValue];
+                NSInteger schemaVersion = [PPSafeNumber(data[@"posSchemaVersion"]) integerValue];
                 NSArray *items = data[@"items"];
-                if (schemaVersion < 2 && (![items isKindOfClass:NSArray.class] || items.count == 0 || data[@"total"] == nil)) {
+                if (schemaVersion < 2 && (![items isKindOfClass:NSArray.class] || items.count == 0 || PPSafeNumber(data[@"total"]) == nil)) {
                     continue;
                 }
 
@@ -1498,7 +1508,7 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
             return;
         }
         NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
-        BOOL ok = [resp[@"ok"] boolValue];
+        BOOL ok = [PPSafeNumber(resp[@"ok"]) boolValue];
         if (completion) completion(ok, nil);
     }];
 }
@@ -1566,24 +1576,24 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
     payload[@"transactionId"] = trimmedID;
     payload[@"commandId"] = resolvedCommandId;
     payload[@"reason"] = trimmedReason;
-    payload[@"currency"] = (currency.length > 0 ? currency.uppercaseString : @"QAR");
-    payload[@"refundAmount"] = @(refundAmount);
-    NSString *trimmedRefundMode = [refundMode stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    NSString *trimmedAdjustment = [refundAdjustmentReason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    double safeRefundAmount = (isfinite(refundAmount) && refundAmount >= 0) ? round(refundAmount * 100.0) / 100.0 : 0.0;
+    payload[@"currency"] = (PPSafeString(currency).length > 0 ? PPSafeString(currency).uppercaseString : @"QAR");
+    payload[@"refundAmount"] = @(safeRefundAmount);
+    NSString *trimmedRefundMode = [PPSafeString(refundMode) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *trimmedAdjustment = [PPSafeString(refundAdjustmentReason) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedRefundMode.length > 0) payload[@"refundMode"] = trimmedRefundMode.lowercaseString;
     if (trimmedAdjustment.length > 0) payload[@"refundAdjustmentReason"] = trimmedAdjustment;
-    if (refundItems && refundItems.count > 0) {
+    if (refundItems && [refundItems isKindOfClass:NSArray.class] && refundItems.count > 0) {
         NSMutableArray<NSDictionary *> *sanitizedItems = [NSMutableArray arrayWithCapacity:refundItems.count];
         for (NSDictionary *rawItem in refundItems) {
             if (![rawItem isKindOfClass:NSDictionary.class]) continue;
             NSMutableDictionary *m = [rawItem mutableCopy];
-            NSString *prodId = m[@"productId"] ?: m[@"itemID"] ?: m[@"itemId"];
+            NSString *prodId = PPSafeString(m[@"productId"] ?: m[@"itemID"] ?: m[@"itemId"]);
             if (prodId.length > 0) {
                 m[@"productId"] = prodId;
             }
-            if (!m[@"condition"]) {
-                m[@"condition"] = @"sellable";
-            }
+            NSString *condition = PPSafeString(m[@"condition"]);
+            m[@"condition"] = condition.length > 0 ? condition : @"sellable";
             [sanitizedItems addObject:m];
         }
         payload[@"refundItems"] = sanitizedItems;
@@ -1599,8 +1609,11 @@ static NSArray<NSDictionary *> *PPPOSMappedItems(NSArray<NSDictionary *> *items)
             return;
         }
         NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
-        BOOL ok = [resp[@"ok"] boolValue];
-        NSString *returnedRefundId = resp[@"refundId"] ?: resp[@"reversalCommandId"] ?: resolvedCommandId;
+        BOOL ok = [PPSafeNumber(resp[@"ok"]) boolValue];
+        NSString *returnedRefundId = PPSafeString(resp[@"refundId"] ?: resp[@"reversalCommandId"]);
+        if (returnedRefundId.length == 0) {
+            returnedRefundId = resolvedCommandId;
+        }
         if (completion) completion(ok, returnedRefundId, nil);
     }];
 }

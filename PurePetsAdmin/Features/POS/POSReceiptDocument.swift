@@ -189,7 +189,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
             let isLive = item.accessory.isLivePet || item.isIndividuallyTracked || !item.unitRingTags.isEmpty
             let smartDesc = item.accessory.pos_smartVariantDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
             let variantName = item.accessory.pos_variantDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let rawVariant = (smartDesc?.isEmpty == false) ? smartDesc! : variantName
+            let rawVariant = smartDesc.flatMap { $0.isEmpty ? nil : $0 } ?? variantName
             let effective: String?
             if isLive {
                 effective = Language.get("LiveAnimal", alter: "حيوان حي")

@@ -51,7 +51,9 @@ struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
     var remainingHours: Int {
         guard let validUntil else { return 0 }
         let interval = validUntil.timeIntervalSinceNow
-        return max(0, Int(interval / 3600))
+        guard interval.isFinite, interval > 0 else { return 0 }
+        let hours = min(interval / 3600, 9_000_000_000_000_000.0)
+        return max(0, Int(hours))
     }
 
     var urgencyFraction: Double {
@@ -70,10 +72,10 @@ struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
         if validUntil < now {
             return Language.get("LivePet_Expired", alter: "منتهي الصلاحية")
         }
-        let interval = validUntil.timeIntervalSince(now)
-        let days = Int(interval / (24 * 3600))
-        let hours = Int((interval.truncatingRemainder(dividingBy: 24 * 3600)) / 3600)
-        let mins  = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
+        let interval = max(0, validUntil.timeIntervalSince(now))
+        let days = interval.isFinite ? Int(min(interval / (24 * 3600), 9_000_000_000_000_000.0)) : 0
+        let hours = interval.isFinite ? Int((interval.truncatingRemainder(dividingBy: 24 * 3600)) / 3600) : 0
+        let mins  = interval.isFinite ? Int((interval.truncatingRemainder(dividingBy: 3600)) / 60) : 0
 
         if days > 0 {
             let format = Language.get("LivePet_RemainingDays_Format", alter: "متبقي %d يوم")
@@ -143,6 +145,7 @@ final class POSReservedLivePetsViewModel: ObservableObject {
 
     private var accessoriesByID: [String: PetAccessory] = [:]
     private var branchesByID: [String: String] = [:]
+    private var hasAppliedInitialBranchSelection = false
 
     init(accessories: [PetAccessory] = []) {
         updateAccessories(accessories)
@@ -199,6 +202,18 @@ final class POSReservedLivePetsViewModel: ObservableObject {
             let branchList = try await PPLivePetInventoryService.listBranches()
             self.branches = branchList
             self.branchesByID = branchList.reduce(into: [:]) { $0[$1.id] = $1.name }
+            if !hasAppliedInitialBranchSelection {
+                hasAppliedInitialBranchSelection = true
+                let preferredBranchID = PPBranchInventoryResolver.resolveWorkingBranchID(
+                    activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                    systemDefaultBranchID: branchList.first(where: { $0.isDefault })?.id,
+                    availableBranchIDs: branchList.map(\.id),
+                    needsBranchSelection: false
+                )
+                if let preferredBranchID, branchList.contains(where: { $0.id == preferredBranchID }) {
+                    self.selectedBranchID = preferredBranchID
+                }
+            }
             let loadedUnits = try await fetchAllReservedUnits()
             self.items = loadedUnits.sorted {
                 let left  = $0.validUntil ?? Date.distantFuture
@@ -219,7 +234,8 @@ final class POSReservedLivePetsViewModel: ObservableObject {
         var seenKeys = Set<String>()
 
         for reservation in reservations {
-            let branchTitle = branchesByID[reservation.branchID] ?? reservation.branchID
+            let branchTitle = branchesByID[reservation.branchID]
+                ?? PPBranchContextManager.shared().localizedBranchName(forID: reservation.branchID, fallback: reservation.branchID)
             for reservationItem in reservation.items {
                 let accessory = accessoriesByID[reservationItem.productID]
                 let petName = accessory?.name
@@ -1873,11 +1889,12 @@ struct POSReservedPetDossierSheet: View {
                     Divider().overlay(AdminSurface.hairline)
 
                     let margin = item.sellingPrice - cost
-                    let marginPct = cost > 0 ? (margin / item.sellingPrice) * 100 : 0
+                    let rawMarginPct = item.sellingPrice > 0 ? (margin / item.sellingPrice) * 100 : 0
+                    let marginPct = rawMarginPct.isFinite ? Int(min(max(rawMarginPct, -10_000), 10_000)) : 0
                     telemetryRow(
                         icon: "chart.line.uptrend.xyaxis",
                         title: Language.get("POS_Dossier_Margin", alter: "هامش الربح التقديري"),
-                        value: String(format: "+%.2f (%d%%)", margin, Int(marginPct)),
+                        value: String(format: "+%.2f (%d%%)", margin, marginPct),
                         highlightColor: Color(uiColor: .ppSuccess)
                     )
                 }

@@ -1989,35 +1989,51 @@ final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var pendingQuantityItemIDs = Set<String>()
     private var pendingDeletedIDs = Set<String>()
 
+    private func branchRecordIfCurrent(for item: PetAccessory) -> PPBranchInventory? {
+        guard let selectedBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ),
+        PPBranchInventoryResolver.canonicalBranchID(PPBranchInventoryService.shared.currentBranchId) == selectedBranch else {
+            return nil
+        }
+        return PPBranchInventoryService.shared.inventory(for: item.accessoryID)
+    }
+
     func effectiveStock(for item: PetAccessory) -> Int {
-        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if activeTab == .medicines {
-            // A missing branch record is zero in the confirmed branch snapshot;
-            // a catalog quantity must never masquerade as branch stock.
-            guard let activeBranch, !activeBranch.isEmpty,
-                  activeBranch != "main_store", activeBranch != "all_branches",
-                  PPBranchInventoryService.shared.currentBranchId == activeBranch else { return 0 }
-            return max(0, PPBranchInventoryService.shared.inventory(for: item.accessoryID)?.availableQuantity ?? 0)
-        }
-        if let activeBranch, !activeBranch.isEmpty {
-            if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
-                return branchRecord.availableQuantity
-            }
-            if activeBranch != "main_store" && activeBranch != "all_branches" {
-                let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if itemBranch == activeBranch {
-                    return max(0, item.quantity)
-                }
-                return 0
-            }
-        }
-        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        return PPBranchInventoryResolver.resolveCatalogBranchStock(
+            activeBranchID: activeBranch,
+            projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+            branchRecord: branchRecordIfCurrent(for: item)
+        )
+    }
+
+    private func isBranchOutOfStock(_ item: PetAccessory) -> Bool {
+        let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        return PPBranchInventoryResolver.isCatalogOutOfStock(
+            activeBranchID: activeBranch,
+            projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+            branchRecord: branchRecordIfCurrent(for: item)
+        )
     }
 
     var totalCount: Int { allItems.count }
-    var inStockCount: Int { allItems.filter { effectiveStock(for: $0) > 0 && !$0.noStock }.count }
-    var lowStockCount: Int { allItems.filter { let q = effectiveStock(for: $0); return q > 0 && q <= 3 && !$0.noStock }.count }
-    var outOfStockCount: Int { allItems.filter { effectiveStock(for: $0) <= 0 || $0.noStock }.count }
+    var inStockCount: Int { allItems.filter { !isBranchOutOfStock($0) }.count }
+    var lowStockCount: Int { allItems.filter { let q = effectiveStock(for: $0); return q > 0 && q <= 3 && !isBranchOutOfStock($0) }.count }
+    var outOfStockCount: Int { allItems.filter { isBranchOutOfStock($0) }.count }
     var offersCount: Int {
         allItems.filter {
             $0.hasOffer || ($0.discountPercent?.doubleValue ?? 0) > 0 || ($0.discountAmount?.doubleValue ?? 0) > 0
@@ -2056,6 +2072,18 @@ final class PPInventoryListViewModel: ObservableObject {
                     self?.applyFilter()
                 },
             PPBranchInventoryService.shared.$currentBranchId
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                },
+            PPBranchInventoryService.shared.$isServerConfirmed
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                },
+            PPBranchInventoryService.shared.$settingsMap
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in
                     self?.objectWillChange.send()
@@ -2150,11 +2178,11 @@ final class PPInventoryListViewModel: ObservableObject {
         case .all:
             return true
         case .inStock:
-            return stock > 0 && !item.noStock
+            return stock > 0 && !isBranchOutOfStock(item)
         case .lowStock:
-            return stock > 0 && stock <= 3 && !item.noStock
+            return stock > 0 && stock <= 3 && !isBranchOutOfStock(item)
         case .outOfStock:
-            return stock <= 0 || item.noStock
+            return isBranchOutOfStock(item)
         case .hasOffer:
             return (itemDiscountValue(item) > 0) || item.hasOffer
         case .conditionNew:
@@ -2852,9 +2880,15 @@ struct PPInventoryListView: View {
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $itemForLots) { item in
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             InventoryLotsSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                branchId: sheetBranch,
                 onLotsChanged: {
                     viewModel.applyFilter()
                 }
@@ -2862,9 +2896,15 @@ struct PPInventoryListView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $itemForQuarantine) { item in
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             QuarantineStudioSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                branchId: sheetBranch,
                 onResolved: {
                     viewModel.applyFilter()
                 }
@@ -2872,9 +2912,15 @@ struct PPInventoryListView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $itemForDamage) { item in
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             DamageStockSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                branchId: sheetBranch,
                 onDamageRecorded: {
                     viewModel.applyFilter()
                 }
@@ -2882,8 +2928,14 @@ struct PPInventoryListView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(isPresented: $showCycleCountStudio) {
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? ""
             CycleCountStudioView(
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? ""
+                branchId: sheetBranch
             ) {
                 viewModel.applyFilter()
             }
@@ -4309,9 +4361,14 @@ struct PPInventoryListView: View {
     /// but does not repeat family-level product identity or imagery.
     @ViewBuilder
     private func inventoryVariantInspector(for item: PetAccessory, showsAccentLine: Bool = true) -> some View {
-        let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
-        let matchesBranch = branchProjection.currentBranchId == selectedBranch
+        let selectedBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: branchContext.activeBranch?.branchID,
+            systemDefaultBranchID: branchContext.systemDefaultBranch?.branchID,
+            availableBranchIDs: branchContext.availableBranches.map(\.branchID),
+            needsBranchSelection: branchContext.needsBranchSelection
+        ) ?? ""
+        let hasBranch = !selectedBranch.isEmpty
+        let matchesBranch = PPBranchInventoryResolver.canonicalBranchID(branchProjection.currentBranchId) == selectedBranch
         let record = matchesBranch && hasBranch ? branchProjection.inventory(for: item.accessoryID) : nil
         let state = inventoryCellStockState(for: item, hasBranch: hasBranch, matchesBranch: matchesBranch, record: record)
         let sellingPrice: NSNumber? = {
@@ -4346,9 +4403,14 @@ struct PPInventoryListView: View {
     /// same branch projection. No card owns an additional Firebase listener.
     @ViewBuilder
     private func inventoryCard(for item: PetAccessory) -> some View {
-        let selectedBranch = branchContext.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let hasBranch = !selectedBranch.isEmpty && selectedBranch != "main_store"
-        let matchesBranch = branchProjection.currentBranchId == selectedBranch
+        let selectedBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: branchContext.activeBranch?.branchID,
+            systemDefaultBranchID: branchContext.systemDefaultBranch?.branchID,
+            availableBranchIDs: branchContext.availableBranches.map(\.branchID),
+            needsBranchSelection: branchContext.needsBranchSelection
+        ) ?? ""
+        let hasBranch = !selectedBranch.isEmpty
+        let matchesBranch = PPBranchInventoryResolver.canonicalBranchID(branchProjection.currentBranchId) == selectedBranch
         let record = matchesBranch && hasBranch ? branchProjection.inventory(for: item.accessoryID) : nil
         let state = inventoryCellStockState(for: item, hasBranch: hasBranch, matchesBranch: matchesBranch, record: record)
         let sellingPrice: NSNumber? = {
@@ -4362,7 +4424,7 @@ struct PPInventoryListView: View {
             sellingPrice: sellingPrice,
             quantity: hasBranch ? (record?.availableQuantity ?? 0) : max(0, item.quantity),
             reservedQuantity: hasBranch ? (record?.reservedQuantity ?? 0) : max(0, item.reservedQuantity),
-            branchName: hasBranch ? (branchContext.activeBranch?.localizedName() ?? "") : item.resolvedBranchName(),
+            branchName: hasBranch ? (branchContext.branch(for: selectedBranch)?.localizedName() ?? branchContext.activeBranch?.localizedName() ?? "") : item.resolvedBranchName(),
             stockState: state,
             canManageStock: canAccessInventoryCell(kStaffPermStockManage, branchID: hasBranch ? selectedBranch : nil),
             canDeleteStock: canAccessInventoryCell("stock.delete", branchID: hasBranch ? selectedBranch : nil),
@@ -7491,7 +7553,17 @@ public struct PPInventoryItemDetailView: View {
         self.onDelete = onDelete
         self.onToggleAppMarket = onToggleAppMarket
         _liveModel = StateObject(wrappedValue: PPLivePetOperationsViewModel(item: item))
-        let initialStock = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        let initialBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        let initialStock = PPBranchInventoryResolver.resolveCatalogBranchStock(
+            activeBranchID: initialBranch,
+            projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+            branchRecord: PPBranchInventoryService.shared.inventory(for: item.accessoryID)
+        )
         _currentQuantity = State(initialValue: initialStock)
     }
 
@@ -7691,11 +7763,17 @@ public struct PPInventoryItemDetailView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
-            if item.isLivePet && item.quantity > 0 {
-                currentQuantity = item.quantity
-            } else {
-                currentQuantity = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
-            }
+            let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            )
+            currentQuantity = PPBranchInventoryResolver.resolveCatalogBranchStock(
+                activeBranchID: activeBranch,
+                projectionBranchID: PPBranchInventoryService.shared.currentBranchId,
+                branchRecord: PPBranchInventoryService.shared.inventory(for: item.accessoryID)
+            )
             if accessibilityReduceMotion {
                 hasAppeared = true
             } else {
@@ -7758,21 +7836,25 @@ public struct PPInventoryItemDetailView: View {
             }
         }
         .sheet(isPresented: $showTransferSheet) {
+            let transferSourceBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.storeID) ?? ""
             PPStockTransferSheet(
                 item: item,
-                currentBranchID: BranchContextStore.shared.activeBranch?.branchID ?? item.storeID ?? "main_store",
-                availableQuantity: currentQuantity,
+                currentBranchID: transferSourceBranch,
+                availableQuantity: displayedQuantity,
                 branches: (viewModel?.branches.isEmpty == false ? viewModel?.branches : nil) ?? PPLivePetInventoryService.cachedBranches,
                 onComplete: { newQuantity in
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         currentQuantity = newQuantity
-                        item.quantity = newQuantity
-                        item.noStock = (newQuantity <= 0)
                     }
-                    if let branchId = BranchContextStore.shared.activeBranch?.branchID {
+                    if !transferSourceBranch.isEmpty {
                         branchInventory.refreshInventory(
                             for: item.accessoryID,
-                            branchId: branchId
+                            branchId: transferSourceBranch
                         )
                     }
                     viewModel?.applyFilter()
@@ -7785,9 +7867,15 @@ public struct PPInventoryItemDetailView: View {
             }
         }
         .sheet(isPresented: $showDamageSheet) {
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             DamageStockSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                branchId: sheetBranch,
                 onDamageRecorded: {
                     Task { await viewModel?.refresh() }
                 }
@@ -7795,9 +7883,15 @@ public struct PPInventoryItemDetailView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $showQuarantineSheet) {
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             QuarantineStudioSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                branchId: sheetBranch,
                 onResolved: {
                     Task { await viewModel?.refresh() }
                 }
@@ -7805,9 +7899,15 @@ public struct PPInventoryItemDetailView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $showLotsSheet) {
+            let sheetBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID()) ?? ""
             InventoryLotsSheet(
                 item: item,
-                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID()
+                branchId: sheetBranch
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -7831,24 +7931,40 @@ public struct PPInventoryItemDetailView: View {
             setExactQuantity(newQty)
         }
         .onChange(of: branchInventory.inventoryMap) { _ in
-            if !item.isLivePet {
-                let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
+            if !(item.isLivePet && liveModel.mode == .individual) {
+                let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                    activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                    systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                    availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                    needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+                )
+                let fresh = PPBranchInventoryResolver.resolveCatalogBranchStock(
+                    activeBranchID: activeBranch,
+                    projectionBranchID: branchInventory.currentBranchId,
+                    branchRecord: branchInventory.inventory(for: item.accessoryID)
+                )
                 if currentQuantity != fresh {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         currentQuantity = fresh
-                        item.quantity = fresh
-                        item.noStock = (fresh <= 0)
                     }
                 }
             }
         }
         .onChange(of: branchInventory.currentBranchId) { _ in
-            if !item.isLivePet {
-                let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: item.quantity)
+            if !(item.isLivePet && liveModel.mode == .individual) {
+                let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                    activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                    systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+                    availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+                    needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+                )
+                let fresh = PPBranchInventoryResolver.resolveCatalogBranchStock(
+                    activeBranchID: activeBranch,
+                    projectionBranchID: branchInventory.currentBranchId,
+                    branchRecord: branchInventory.inventory(for: item.accessoryID)
+                )
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     currentQuantity = fresh
-                    item.quantity = fresh
-                    item.noStock = (fresh <= 0)
                 }
             }
         }
@@ -8837,14 +8953,23 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private var effectiveAvailableUnitsCount: Int {
-        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        let activeIsDefault = BranchContextStore.shared.activeBranch?.isDefault
+            ?? (BranchContextStore.shared.systemDefaultBranch?.branchID == activeBranch)
         return liveModel.units.filter { unit in
             guard unit.status == "AVAILABLE" else { return false }
-            if let activeBranch, !activeBranch.isEmpty {
-                let unitBranch = unit.currentBranchID.isEmpty ? (item.resolvedBranchID() ?? item.storeID ?? "") : unit.currentBranchID
-                return unitBranch.isEmpty || unitBranch == "main_store" || unitBranch == activeBranch
-            }
-            return true
+            let fallbackBranch = item.resolvedBranchID() ?? item.storeID ?? ""
+            return PPBranchInventoryResolver.isLivePetUnitInBranch(
+                unitBranchID: unit.currentBranchID,
+                fallbackBranchID: fallbackBranch,
+                activeBranchID: activeBranch,
+                activeBranchIsDefault: activeIsDefault
+            )
         }.count
     }
 
@@ -8854,12 +8979,39 @@ public struct PPInventoryItemDetailView: View {
                 return effectiveAvailableUnitsCount
             }
         }
-        return branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
+        let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        return PPBranchInventoryResolver.resolveCatalogBranchStock(
+            activeBranchID: activeBranch,
+            projectionBranchID: branchInventory.currentBranchId,
+            branchRecord: branchInventory.inventory(for: item.accessoryID)
+        )
+    }
+
+    private var isBranchOutOfStock: Bool {
+        let activeBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        )
+        if item.isLivePet && liveModel.mode == .individual {
+            return displayedQuantity <= 0
+        }
+        return PPBranchInventoryResolver.isCatalogOutOfStock(
+            activeBranchID: activeBranch,
+            projectionBranchID: branchInventory.currentBranchId,
+            branchRecord: branchInventory.inventory(for: item.accessoryID)
+        )
     }
 
     private var stockTone: Color {
         let qty = displayedQuantity
-        if qty <= 0 || (item.noStock && !item.isLivePet) {
+        if qty <= 0 || (!item.isLivePet && isBranchOutOfStock) {
             return Color(uiColor: .ppError)
         } else if qty <= 3 {
             return Color(uiColor: .ppWarning)
@@ -8870,9 +9022,7 @@ public struct PPInventoryItemDetailView: View {
 
     private var stockStatusText: String {
         let qty = displayedQuantity
-        if item.noStock && !item.isLivePet {
-            return Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً")
-        } else if qty <= 0 {
+        if qty <= 0 || (!item.isLivePet && isBranchOutOfStock) {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if qty <= 3 {
             return Language.get("LowStock", alter: "وشك النفاذ")
@@ -8937,12 +9087,6 @@ public struct PPInventoryItemDetailView: View {
         let effectiveDelta = newQty - currentQuantity
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         currentQuantity = newQty
-        item.quantity = newQty
-        if newQty == 0 {
-            item.noStock = true
-        } else if item.noStock && effectiveDelta > 0 {
-            item.noStock = false
-        }
         if let onAdjust = onAdjustQuantity {
             onAdjust(effectiveDelta)
         } else if let vm = viewModel {
@@ -10963,8 +11107,12 @@ public struct PPItemActionsHubView: View {
         PetAccessory.firstImageURL(for: item)
     }
 
+    private var isBranchOutOfStockForSheet: Bool {
+        currentQuantity <= 0 || (PPBranchInventoryService.shared.inventory(for: item.accessoryID)?.noStock == true)
+    }
+
     private var stockTone: Color {
-        if (item.noStock && !item.isLivePet) || currentQuantity <= 0 {
+        if (!item.isLivePet && isBranchOutOfStockForSheet) || currentQuantity <= 0 {
             return Color(uiColor: .ppError)
         } else if currentQuantity <= 3 {
             return Color(uiColor: .ppWarning)
@@ -10974,9 +11122,7 @@ public struct PPItemActionsHubView: View {
     }
 
     private var stockStatusText: String {
-        if item.noStock && !item.isLivePet {
-            return Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً")
-        } else if currentQuantity <= 0 {
+        if (!item.isLivePet && isBranchOutOfStockForSheet) || currentQuantity <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if currentQuantity <= 3 {
             return Language.get("LowStock", alter: "وشك النفاذ")
@@ -11704,6 +11850,7 @@ public struct PPItemActionsHubView: View {
 
     @ViewBuilder
     private func availabilityControllerCard(onToggle: @escaping () -> Void) -> some View {
+        let outOfStock = isBranchOutOfStockForSheet
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onToggle()
@@ -11711,24 +11858,24 @@ public struct PPItemActionsHubView: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(item.noStock ? Color(uiColor: .ppError).opacity(0.12) : Color(uiColor: .ppSuccess).opacity(0.12))
-                    Image(systemName: item.noStock ? "eye.slash.fill" : "eye.fill")
+                        .fill(outOfStock ? Color(uiColor: .ppError).opacity(0.12) : Color(uiColor: .ppSuccess).opacity(0.12))
+                    Image(systemName: outOfStock ? "eye.slash.fill" : "eye.fill")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .foregroundStyle(outOfStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                 }
                 .frame(width: 38, height: 38)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.22), lineWidth: 0.75)
+                        .strokeBorder((outOfStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.22), lineWidth: 0.75)
                 )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
+                    Text(outOfStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
                         .font(Font.custom("Beiruti-Bold", size: 14))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
 
-                    Text(item.noStock ? Language.get("ItemActions_Inactive_Desc", alter: "الصنف موقوف حالياً من العرض بالمخزون") : Language.get("ItemActions_Active_Desc", alter: "الصنف نشط وجاهز للطلب والبيع"))
+                    Text(outOfStock ? Language.get("ItemActions_Inactive_Desc", alter: "الصنف موقوف حالياً من العرض بالمخزون") : Language.get("ItemActions_Active_Desc", alter: "الصنف نشط وجاهز للطلب والبيع"))
                         .font(Font.custom("Beiruti-Regular", size: 11))
                         .foregroundStyle(AdminCommandInk.secondary)
                         .lineLimit(1)
@@ -11737,15 +11884,15 @@ public struct PPItemActionsHubView: View {
                 Spacer(minLength: 4)
 
                 // State Pill Toggle
-                Text(item.noStock ? Language.get("Action_Enable", alter: "تفعيل") : Language.get("Action_Disable", alter: "إيقاف"))
+                Text(outOfStock ? Language.get("Action_Enable", alter: "تفعيل") : Language.get("Action_Disable", alter: "إيقاف"))
                     .font(Font.custom("Beiruti-Bold", size: 12))
-                    .foregroundStyle(item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                    .foregroundStyle(outOfStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background((item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12), in: Capsule(style: .continuous))
+                    .background((outOfStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12), in: Capsule(style: .continuous))
                     .overlay(
                         Capsule(style: .continuous)
-                            .strokeBorder((item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.3), lineWidth: 0.75)
+                            .strokeBorder((outOfStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.3), lineWidth: 0.75)
                     )
             }
             .padding(10)
@@ -13630,7 +13777,12 @@ private struct PPLivePetOperationSheet: View {
             _customerPhone = State(initialValue: reservation.customerPhone)
             _cashReceivedText = State(initialValue: String(format: "%.2f", reservation.total))
         case .intake:
-            let defaultBranch = (model.item.resolvedBranchID() ?? model.item.storeID ?? BranchContextStore.shared.activeBranch?.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let defaultBranch = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: model.branches.first(where: { $0.isDefault })?.id ?? BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: model.branches.map(\.id),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) ?? PPBranchInventoryResolver.canonicalBranchID(model.item.resolvedBranchID() ?? model.item.storeID) ?? ""
             let canonicalDefault = PPLivePetInventoryService.canonicalBranch(for: defaultBranch, in: model.branches)?.id ?? defaultBranch
             _selectedBranchID = State(initialValue: canonicalDefault)
             _selectedMode = State(initialValue: model.mode ?? .individual)
@@ -16153,11 +16305,16 @@ private struct PPLivePetOperationSheet: View {
                 }
             }
         } else if selectedBranchID.isEmpty {
-            if let active = BranchContextStore.shared.activeBranch?.branchID, !active.isEmpty {
+            if let active = PPBranchInventoryResolver.resolveWorkingBranchID(
+                activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+                systemDefaultBranchID: model.branches.first(where: { $0.isDefault })?.id ?? BranchContextStore.shared.systemDefaultBranch?.branchID,
+                availableBranchIDs: model.branches.map(\.id),
+                needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+            ) {
                 let canonicalActive = PPLivePetInventoryService.canonicalBranch(for: active, in: model.branches)?.id ?? active
                 selectedBranchID = canonicalActive
-            } else if let first = model.branches.first?.id {
-                selectedBranchID = first
+            } else if let defaultOpt = model.branches.first(where: { $0.isDefault })?.id ?? model.branches.first?.id {
+                selectedBranchID = defaultOpt
             }
         }
     }

@@ -34,9 +34,12 @@ enum POSReceiptWhatsAppSender {
 
         if receipt.isRefunded {
             let refundAmountFormatted = POSReceiptFormat.currency(receipt.refundedAmount, code: receipt.currency)
-            let reasonSnippet = (receipt.refundReason != nil && !receipt.refundReason!.isEmpty)
-                ? "\n" + Language.get("POS_Receipt_RefundReason", alter: "سبب الاسترداد") + ": \(receipt.refundReason!)"
-                : ""
+            let reasonSnippet: String
+            if let reason = receipt.refundReason, !reason.isEmpty {
+                reasonSnippet = "\n" + Language.get("POS_Receipt_RefundReason", alter: "سبب الاسترداد") + ": \(reason)"
+            } else {
+                reasonSnippet = ""
+            }
 
             if isRTL {
                 let greeting = !customerName.isEmpty ? "مرحباً بك يا \(customerName) في بيور بتس 🐾" : "مرحباً بكم في بيور بتس 🐾"
@@ -535,7 +538,8 @@ final class POSHistoryViewModel: ObservableObject {
         receipt: PPPOSReceipt,
         refundAmount: Double,
         refundItems: [[String: Any]]?,
-        reason: String
+        reason: String,
+        commandID: String? = nil
     ) async -> Bool {
         isSubmittingReversal = true
         reversalError = nil
@@ -546,8 +550,9 @@ final class POSHistoryViewModel: ObservableObject {
                 refundAmount: refundAmount,
                 refundItems: refundItems,
                 reason: reason,
-                currency: receipt.currency.isEmpty ? "QAR" : receipt.currency
-            ) { success, error in
+                currency: receipt.currency.isEmpty ? "QAR" : receipt.currency,
+                commandID: commandID
+            ) { success, _, error in
                 if let error {
                     continuation.resume(returning: .failure(error))
                 } else {
@@ -3331,6 +3336,8 @@ struct POSRefundStudioSheet: View {
     @State private var customReason: String = ""
     @State private var isShowingLivePetCoordinator: Bool = false
     @State private var quantityInputError: String?
+    @State private var pendingRefundCommandID: String?
+    @State private var pendingRefundSignature: String = ""
 
     private struct ReturnConditionOption: Identifiable {
         let id: String
@@ -3955,15 +3962,32 @@ struct POSRefundStudioSheet: View {
             }
         }
         let itemsPayload: [[String: Any]]? = mapped.isEmpty ? nil : mapped
+        let itemsSignature = mapped
+            .map { "\($0["productId"] ?? ""):\($0["quantity"] ?? 0):\($0["condition"] ?? "sellable")" }
+            .sorted()
+            .joined(separator: ",")
+        let requestSignature = "\(receipt.receiptID)|\(isFullRefund)|\(POSMoney.minorUnits(amount))|\(finalReason)|\(itemsSignature)"
+        let resolvedCommandID: String
+        if let existingCommandID = pendingRefundCommandID, pendingRefundSignature == requestSignature {
+            resolvedCommandID = existingCommandID
+        } else {
+            let newCommandID = "pos-refund-\(UUID().uuidString)"
+            pendingRefundSignature = requestSignature
+            pendingRefundCommandID = newCommandID
+            resolvedCommandID = newCommandID
+        }
 
         Task {
             let success = await viewModel.refundTransaction(
                 receipt: receipt,
                 refundAmount: amount,
                 refundItems: itemsPayload,
-                reason: finalReason
+                reason: finalReason,
+                commandID: resolvedCommandID
             )
             if success {
+                pendingRefundCommandID = nil
+                pendingRefundSignature = ""
                 // Update local receipt instance with refund facts
                 if !(receipt.proformaInvoiceID ?? "").isEmpty {
                     receipt.refundedTax += proformaRefundComponents.tax

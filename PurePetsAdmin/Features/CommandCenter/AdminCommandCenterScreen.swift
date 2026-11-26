@@ -593,12 +593,16 @@ struct AdminCommandCenterScreenView: View {
     @State private var isShowingSidePanel = false
 
     private var currentBranchDisplayName: String {
-        let name = branchContext.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? Language.get("BranchContext_SelectBranch_Prompt", alter: nil) : name
+        if let branch = branchContext.activeBranch {
+            let name = branch.localizedName().trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty ? L10n("AdminCommandCenter_Header_UnnamedBranch") : name
+        }
+        if branchContext.isGlobalAccess { return L10n("BranchContext_AllBranches_Global") }
+        return L10n(canSwitchBranch ? "BranchContext_SelectBranch_Prompt" : "BranchPicker_Journal_NoBranch")
     }
 
     private var canSwitchBranch: Bool {
-        branchContext.availableBranches.count > 1
+        branchContext.canSwitchBranch
     }
 
     private var locale: Locale {
@@ -637,7 +641,7 @@ struct AdminCommandCenterScreenView: View {
 
             // Large text and compact-height windows need the header to scroll
             // with the existing content, rather than consume its whole viewport.
-            let scrollsHeader = dynamicTypeSize.isAccessibilitySize || geometry.size.height < 600
+            let scrollsHeader = dynamicTypeSize >= .xxxLarge || geometry.size.height < 600
 
             ZStack(alignment: .trailing) {
                 VStack(spacing: 0) {
@@ -672,17 +676,15 @@ struct AdminCommandCenterScreenView: View {
                     }
                 }
                 .background(AdminSurface.background.ignoresSafeArea())
+                .accessibilityHidden(isShowingSidePanel)
 
                 // Sovereign NextGen V9 Side Panel Navigation Overlay
                 if isShowingSidePanel {
                     Color.black.opacity(0.42)
                         .ignoresSafeArea()
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                                isShowingSidePanel = false
-                            }
-                        }
+                        .onTapGesture { presentSidePanel(false) }
+                        .accessibilityHidden(true)
                         .transition(.opacity)
                         .zIndex(199)
 
@@ -694,8 +696,8 @@ struct AdminCommandCenterScreenView: View {
                         capabilityText: capabilityText,
                         branchName: currentBranchDisplayName,
                         canSwitchBranch: canSwitchBranch,
-                        readinessText: compactReadinessText,
-                        readinessTone: readinessTone,
+                        readinessText: headerSourceStatus.title,
+                        readinessTone: headerSourceStatus.tone,
                         languageTitle: languageToggleTitle,
                         currentLocaleCode: store.localeCode,
                         isRegular: isRegular,
@@ -705,14 +707,16 @@ struct AdminCommandCenterScreenView: View {
                         onLanguage: { store.onToggleLanguage?() },
                         onLogout: { store.onRequestLogout?() },
                         onSelectBranch: { isShowingBranchSelection = true },
-                        onReadinessTap: store.readiness.failedAreas.isEmpty ? nil : {
+                        onReadinessTap: headerSourceStatus.showsRecovery ? {
                             isShowingSourceIssueDetails = true
-                        },
+                        } : nil,
                         onRoute: { tag in route(tag) }
                     )
                     .frame(width: isRegular ? 380 : min(geometry.size.width * 0.85, 340))
                     .frame(maxHeight: .infinity)
-                    .transition(.move(edge: .trailing))
+                    .transition(reduceMotion ? .identity : .move(edge: .trailing))
+                    .accessibilityAddTraits(.isModal)
+                    .accessibilityAction(.escape) { presentSidePanel(false) }
                     .zIndex(200)
                 }
             }
@@ -726,9 +730,14 @@ struct AdminCommandCenterScreenView: View {
                 .environment(\.locale, locale)
         }
         .sheet(isPresented: $isShowingSourceIssueDetails) {
-            sourceIssueSheet
-                .environment(\.layoutDirection, direction)
-                .environment(\.locale, locale)
+            if headerSourceStatus.showsRecovery {
+                sourceIssueSheet
+                    .environment(\.layoutDirection, direction)
+                    .environment(\.locale, locale)
+            }
+        }
+        .onChange(of: headerSourceStatus.showsRecovery) { _, showsRecovery in
+            if !showsRecovery { isShowingSourceIssueDetails = false }
         }
         .onAppear {
             DispatchQueue.main.async {
@@ -779,36 +788,35 @@ struct AdminCommandCenterScreenView: View {
         }
     }
 
-    private func fixedNavBar(safeTop: CGFloat, isRegular: Bool, containerWidth: CGFloat = 0) -> some View {
-        let ipadMaxWidth: CGFloat = 1160
+    private func presentSidePanel(_ presented: Bool) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)) {
+            isShowingSidePanel = presented
+        }
+    }
+
+    private func fixedNavBar(safeTop: CGFloat, isRegular: Bool, containerWidth: CGFloat) -> some View {
+        let snapshot = store.snapshot
         return CommandCenterChrome(
-            displayName: store.snapshot.displayName,
-            avatarURL: store.snapshot.avatarURL,
-            roleName: roleDisplayName,
-            capabilityText: capabilityText,
-            readinessText: compactReadinessText,
-            readinessTone: readinessTone,
-            onReadinessTap: store.readiness.failedAreas.isEmpty ? nil : {
-                isShowingSourceIssueDetails = true
-            },
-            languageTitle: languageToggleTitle,
-            onAccount: { route("editMyAccount") },
-            onRefresh: { refresh() },
-            onLanguage: { store.onToggleLanguage?() },
-            onLogout: { store.onRequestLogout?() },
-            onSelectBranch: { isShowingBranchSelection = true },
-            onOpenSidePanel: {
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
-                    isShowingSidePanel = true
-                }
-            },
+            branchName: currentBranchDisplayName,
+            branchCode: branchContext.activeBranch?.code ?? "",
+            canSwitchBranch: canSwitchBranch,
+            displayName: snapshot.displayName,
+            avatarURL: snapshot.avatarURL,
+            roleName: snapshot.roleName,
+            accountDetail: localizedList([snapshot.roleName, snapshot.isInitialized ? capabilityText : ""].filter { !$0.isEmpty }),
+            sourceStatus: headerSourceStatus,
             isRegular: isRegular,
-            containerWidth: containerWidth
+            onSelectBranch: {
+                if canSwitchBranch { isShowingBranchSelection = true }
+            },
+            onReviewSources: { isShowingSourceIssueDetails = true },
+            onAccount: { route("editMyAccount") },
+            onOpenSidePanel: { presentSidePanel(true) }
         )
         .padding(.horizontal, AdminCommandMetric.pageMargin)
         .padding(.top, safeTop)
         .padding(.bottom, 6)
-        .frame(maxWidth: isRegular ? min(ipadMaxWidth, containerWidth > 0 ? (containerWidth + 2 * AdminCommandMetric.pageMargin) : ipadMaxWidth) : .infinity)
+        .frame(maxWidth: isRegular ? min(1160, containerWidth + 2 * AdminCommandMetric.pageMargin) : .infinity)
         .frame(maxWidth: .infinity)
         .zIndex(100)
         .commandHeaderEntrance(isAppeared: sectionsAppeared, reduceMotion: reduceMotion)
@@ -819,7 +827,7 @@ struct AdminCommandCenterScreenView: View {
         let sheet = CommandSourceIssueSheet(
             sourceNames: localizedAreaNames(store.readiness.failedAreas),
             detail: failedDetail,
-            updatedText: updatedText,
+            updatedText: feedTimeText(formatKey: "AdminCommandCenter_SourceIssue_LastChecked_Format"),
             onRetry: refresh
         )
 
@@ -1203,12 +1211,6 @@ struct AdminCommandCenterScreenView: View {
         primarySignal?.tier.tone ?? .stable
     }
 
-    private var readinessTone: AdminCommandTone {
-        if !store.readiness.failedAreas.isEmpty { return .elevated }
-        if !store.readiness.loadingAreas.isEmpty || !store.snapshot.isInitialized { return .info }
-        return .stable
-    }
-
     private var runwayTitle: String {
         totalAttentionCount > 0 ? L10n("CommandCenter_Needs_Attention") : L10n("CommandCenter_Command_Spine")
     }
@@ -1229,11 +1231,19 @@ struct AdminCommandCenterScreenView: View {
         L10n(store.localeCode == "ar" ? "Language_English_Code" : "Language_Arabic_Code")
     }
 
-    private var compactReadinessText: String {
-        if !store.readiness.failedAreas.isEmpty { return L10n("AdminCommandCenter_SourceIssue_Title") }
-        if !store.readiness.loadingAreas.isEmpty { return L10n("AdminCommandCenter_LoadingSources") }
-        if !store.snapshot.isInitialized { return L10n("AdminCommandCenter_Connecting") }
-        return L10n("AdminCommandCenter_Ready_Detail")
+    private var headerSourceStatus: CommandHeaderSourceStatus {
+        if !store.snapshot.isInitialized { return .connecting }
+        if store.snapshot.roleName.isEmpty { return .restricted }
+        let readiness = store.readiness
+        if !readiness.failedAreas.isEmpty {
+            let sourceName = readiness.failedAreas.count == 1
+                ? readiness.failedAreas.first.flatMap(localizedAreaName)
+                : nil
+            return .issue(sourceName: sourceName)
+        }
+        if phase == .loading || !readiness.loadingAreas.isEmpty { return .checking }
+        // The bridge also timestamps failed callbacks. It cannot certify data freshness.
+        return readiness.updatedAt == nil ? .unconfirmed : .noReportedIssues
     }
 
     private var confirmingDetail: String {
@@ -1253,6 +1263,10 @@ struct AdminCommandCenterScreenView: View {
     }
 
     private var updatedText: String {
+        feedTimeText(formatKey: "AdminCommandCenter_LastConfirmed_Format")
+    }
+
+    private func feedTimeText(formatKey: String) -> String {
         guard let updatedAt = store.readiness.updatedAt else {
             return L10n("AdminCommandCenter_NotConfirmed")
         }
@@ -1260,18 +1274,20 @@ struct AdminCommandCenterScreenView: View {
         formatter.locale = locale
         formatter.unitsStyle = .short
         let relative = formatter.localizedString(for: updatedAt, relativeTo: Date())
-        return String(format: L10n("AdminCommandCenter_LastConfirmed_Format"), relative)
+        return String(format: L10n(formatKey), relative)
     }
 
     private func localizedAreaNames(_ areas: [String]) -> [String] {
-        areas.map { area in
-            let orbitKey = "AdminCommandOrbit_Area_\(area)"
-            let commandKey = "CommandCenter_Area_\(area)"
-            let orbitValue = Language.get(orbitKey, alter: nil)
-            if orbitValue != orbitKey { return orbitValue }
-            let commandValue = Language.get(commandKey, alter: nil)
-            return commandValue == commandKey ? area : commandValue
-        }
+        areas.map { localizedAreaName($0) ?? $0 }
+    }
+
+    private func localizedAreaName(_ area: String) -> String? {
+        let orbitKey = "AdminCommandOrbit_Area_\(area)"
+        let orbitValue = L10n(orbitKey)
+        if !orbitValue.isEmpty && orbitValue != orbitKey { return orbitValue }
+        let commandKey = "CommandCenter_Area_\(area)"
+        let commandValue = L10n(commandKey)
+        return commandValue.isEmpty || commandValue == commandKey ? nil : commandValue
     }
 
     private func localizedList(_ values: [String]) -> String {
@@ -2160,279 +2176,80 @@ private struct AdminNextGenSidePanelNav: View {
     }
 }
 
-// MARK: - Workplace Header Backgrounds
+// MARK: - Home header
 
-/// Sovereign Living Aurora & Specular Glass Cockpit Surface for the Command Center Top Bar.
-/// Category-defining animated background with telemetry-tuned living resonance,
-/// sapphire-crystal specular caustics, and light-sculpted physical bezel strokes.
-private struct CommandCenterCockpitBackground: View {
-    fileprivate let readinessTone: AdminCommandTone
-    let cornerRadius: CGFloat
+/// Source readiness and the urgency of operational work are independent.
+private enum CommandHeaderSourceStatus: Equatable {
+    case connecting
+    case checking
+    case unconfirmed
+    case noReportedIssues
+    case restricted
+    case issue(sourceName: String?)
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.layoutDirection) private var layoutDirection
-
-    @State private var breatheBrand: Bool = false
-    @State private var breatheTelemetry: Bool = false
-    @State private var sheenSweep: Bool = false
-
-    private var isRTL: Bool {
-        layoutDirection == .rightToLeft
+    var title: String {
+        let key: String
+        switch self {
+        case .connecting: key = "AdminCommandCenter_Connecting"
+        case .checking: key = "AdminCommandCenter_LoadingSources"
+        case .unconfirmed: key = "AdminCommandCenter_Header_Unconfirmed"
+        case .noReportedIssues: key = "AdminCommandCenter_Header_NoSourceErrors"
+        case .restricted: key = "CommandCenter_Access_Denied_Title"
+        case .issue(let sourceName):
+            if let sourceName {
+                return String(format: Language.get("AdminCommandCenter_Header_SourceFailed_Format", alter: nil), sourceName)
+            }
+            key = "AdminCommandCenter_Header_SourcesFailed"
+        }
+        return Language.get(key, alter: nil)
     }
 
-    private var primaryAuraColor: Color {
-        Color(uiColor: .ppPrimary)
+    var symbol: String {
+        switch self {
+        case .connecting: return "ellipsis.circle"
+        case .checking: return "arrow.triangle.2.circlepath"
+        case .unconfirmed: return "minus.circle"
+        case .noReportedIssues: return "checkmark.circle"
+        case .restricted: return "lock"
+        case .issue: return "exclamationmark.circle.fill"
+        }
     }
 
-    private var telemetryAuraColor: Color {
-        readinessTone.accent
+    var tone: AdminCommandTone {
+        switch self {
+        case .issue: return .elevated
+        case .connecting, .checking: return .info
+        case .restricted, .unconfirmed: return .muted
+        case .noReportedIssues: return .stable
+        }
     }
 
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: colorScheme == .dark
-                        ? [AdminSurface.surface, AdminSurface.surface.opacity(0.96)]
-                        : [Color(uiColor: .ppSurface), Color(uiColor: .ppSurface).opacity(0.98)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay {
-                if !reduceMotion {
-                    GeometryReader { proxy in
-                        let w = proxy.size.width
-                        let h = proxy.size.height
-
-                        let brandCenter = isRTL
-                            ? CGPoint(x: w * 0.78, y: h * 0.32)
-                            : CGPoint(x: w * 0.22, y: h * 0.32)
-                        let telemetryCenter = isRTL
-                            ? CGPoint(x: w * 0.26, y: h * 0.72)
-                            : CGPoint(x: w * 0.74, y: h * 0.72)
-
-                        ZStack {
-                            // Orb 1: Signature Brand Radiance (soft ruby & rose gold orbit)
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            primaryAuraColor.opacity(colorScheme == .dark ? 0.20 : 0.10),
-                                            Color(uiColor: .ppSoftRose).opacity(colorScheme == .dark ? 0.12 : 0.05),
-                                            .clear
-                                        ],
-                                        center: .center,
-                                        startRadius: 0,
-                                        endRadius: max(w, h) * 0.42
-                                    )
-                                )
-                                .frame(width: max(w, h) * 0.84, height: max(w, h) * 0.84)
-                                .position(
-                                    x: brandCenter.x + (breatheBrand ? 12 : -8),
-                                    y: brandCenter.y + (breatheBrand ? -5 : 7)
-                                )
-                                .scaleEffect(breatheBrand ? 1.14 : 0.90)
-                                .blur(radius: 22)
-                                .allowsHitTesting(false)
-
-                            // Orb 2: Operational Health Resonance (breathes in sync with readiness tone)
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            telemetryAuraColor.opacity(colorScheme == .dark ? 0.22 : 0.11),
-                                            telemetryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.03),
-                                            .clear
-                                        ],
-                                        center: .center,
-                                        startRadius: 0,
-                                        endRadius: max(w, h) * 0.38
-                                    )
-                                )
-                                .frame(width: max(w, h) * 0.76, height: max(w, h) * 0.76)
-                                .position(
-                                    x: telemetryCenter.x + (breatheTelemetry ? -10 : 10),
-                                    y: telemetryCenter.y + (breatheTelemetry ? 5 : -5)
-                                )
-                                .scaleEffect(breatheTelemetry ? 1.16 : 0.88)
-                                .blur(radius: 20)
-                                .allowsHitTesting(false)
-
-                            // 3. Specular Prismatic Sheen (Sapphire Crystal Light Ray)
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0.0),
-                                    .init(color: Color.white.opacity(0.0), location: 0.38),
-                                    .init(color: Color.white.opacity(colorScheme == .dark ? 0.12 : 0.28), location: 0.50),
-                                    .init(color: Color.white.opacity(0.0), location: 0.62),
-                                    .init(color: .clear, location: 1.0)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            .frame(width: w * 1.8, height: h * 2.4)
-                            .rotationEffect(.degrees(22))
-                            .offset(x: sheenSweep ? (w * 0.85) : -(w * 0.85))
-                            .blendMode(colorScheme == .dark ? .plusLighter : .overlay)
-                            .allowsHitTesting(false)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .allowsHitTesting(false)
-                } else {
-                    // Tranquil static studio lighting for Reduce Motion
-                    LinearGradient(
-                        stops: [
-                            .init(color: primaryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.04), location: isRTL ? 0.85 : 0.15),
-                            .init(color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.08 : 0.04), location: isRTL ? 0.15 : 0.85),
-                            .init(color: .clear, location: 0.5)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .allowsHitTesting(false)
-                }
-            }
-            .allowsHitTesting(false)
-            .overlay {
-                // 4. Ultra-Thin Frosted Glass Depth
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.20 : 0.30))
-                    .allowsHitTesting(false)
-            }
-            .allowsHitTesting(false)
-            .overlay {
-                // 5. Precision Sculpted Multi-Stop Bezel Rim
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.24 : 0.72), location: 0.0),
-                                .init(color: AdminSurface.hairline.opacity(0.85), location: 0.45),
-                                .init(color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.30 : 0.18), location: 0.80),
-                                .init(color: AdminSurface.hairline.opacity(0.70), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: contrast == .increased ? 1.25 : AdminStroke.hairline
-                    )
-                    .allowsHitTesting(false)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(
-                color: AdminShadow.card.color,
-                radius: AdminShadow.card.radius,
-                y: AdminShadow.card.y
-            )
-            .shadow(
-                color: telemetryAuraColor.opacity(colorScheme == .dark ? 0.16 : 0.08),
-                radius: 14,
-                y: 5
-            )
-            .allowsHitTesting(false)
-            .onAppear {
-                guard !reduceMotion else { return }
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
-                        breatheBrand = true
-                    }
-                    withAnimation(.easeInOut(duration: 5.8).repeatForever(autoreverses: true)) {
-                        breatheTelemetry = true
-                    }
-                    withAnimation(.easeInOut(duration: 9.5).repeatForever(autoreverses: true)) {
-                        sheenSweep = true
-                    }
-                }
-            }
+    var showsRecovery: Bool {
+        if case .issue = self { return true }
+        return false
     }
 }
 
-/// Fluid Recessed Optic Chamber for the Working Branch Selector inside the top bar.
-private struct CommandCenterChamberBackground: View {
-    fileprivate let readinessTone: AdminCommandTone
-    let cornerRadius: CGFloat
-
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        AdminSurface.control.opacity(colorScheme == .dark ? 0.85 : 0.72),
-                        AdminSurface.control.opacity(colorScheme == .dark ? 0.60 : 0.46)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay {
-                // Ultra-thin material allowing subtle ambient aurora pass-through
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(colorScheme == .dark ? 0.15 : 0.25))
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                // Precision micro-bevel border: top catches ambient light, bottom grounds it
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color.white.opacity(colorScheme == .dark ? 0.20 : 0.65), location: 0.0),
-                                .init(color: AdminSurface.hairline.opacity(0.85), location: 0.50),
-                                .init(color: readinessTone.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), location: 0.80),
-                                .init(color: AdminSurface.hairline.opacity(0.60), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: contrast == .increased ? 1.0 : 0.75
-                    )
-                    .allowsHitTesting(false)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .allowsHitTesting(false)
-    }
-}
-
-// MARK: - Workplace Header
-
-/// Presentation only. Snapshot, staff scope, branch selection and routes stay
-/// with their existing owners; every visible action is a sibling native control.
 private struct CommandCenterChrome: View {
+    let branchName: String
+    let branchCode: String
+    let canSwitchBranch: Bool
     let displayName: String
     let avatarURL: String
     let roleName: String
-    let capabilityText: String
-    let readinessText: String
-    fileprivate let readinessTone: AdminCommandTone
-    let onReadinessTap: (() -> Void)?
-    let languageTitle: String
-    let onAccount: () -> Void
-    let onRefresh: () -> Void
-    let onLanguage: () -> Void
-    let onLogout: () -> Void
+    let accountDetail: String
+    let sourceStatus: CommandHeaderSourceStatus
+    let isRegular: Bool
     let onSelectBranch: () -> Void
+    let onReviewSources: () -> Void
+    let onAccount: () -> Void
     let onOpenSidePanel: () -> Void
-    var isRegular: Bool = false
-    var containerWidth: CGFloat = 0
 
-    @ObservedObject private var branchContextStore = BranchContextStore.shared
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.layoutDirection) private var layoutDirection
-    @State private var pulseBeacon: Bool = false
-    @ScaledMetric(relativeTo: .body) private var avatarSide: CGFloat = 36
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .footnote) private var tagWidth: CGFloat = 32
 
     private var secondaryInk: Color {
         contrast == .increased ? AdminSurface.primaryText : AdminSurface.secondaryText
@@ -2445,666 +2262,322 @@ private struct CommandCenterChrome: View {
     var body: some View {
         Group {
             if isRegular {
-                ipadCommandBar
+                HStack(alignment: .center, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        branchControl
+                        HStack(spacing: 10) {
+                            sourceControl
+                                .layoutPriority(1)
+                            rule
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    accountControl
+                        .frame(maxWidth: 206, alignment: .trailing)
+                    moreButton
+                }
             } else {
-                iphoneCommandCockpit
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .top, spacing: 10) {
+                        branchControl.frame(maxWidth: .infinity, alignment: .leading)
+                        moreButton
+                    }
+                    compactDetails
+                }
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("admin.command.header")
     }
 
-    // MARK: - iPhone working-context signature
-
-    private var iphoneCommandCockpit: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            let signatureLayout = dynamicTypeSize >= .xxxLarge
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                : AnyLayout(HStackLayout(alignment: .center, spacing: 8))
-            signatureLayout {
-                operatorIdentityPodiPhone
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                flightUtilityClusteriPhone
+    @ViewBuilder
+    private var compactDetails: some View {
+        if typeSize >= .xxxLarge {
+            stackedDetails
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    sourceControl.fixedSize(horizontal: true, vertical: true)
+                    rule.frame(minWidth: 12)
+                    accountControl.fixedSize(horizontal: true, vertical: true)
+                }
+                stackedDetails
             }
-
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: AdminSurface.hairline.opacity(0.85), location: 0.2),
-                    .init(color: AdminSurface.hairline.opacity(0.85), location: 0.8),
-                    .init(color: .clear, location: 1.0)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(height: 0.75)
-            .padding(.top, 8)
-            .padding(.bottom, 8)
-            .accessibilityHidden(true)
-
-            workingBranchChamberiPhone
-
-            readinessControliPhone
-                .padding(.top, 6)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: CommandCorner.hero)
-                .allowsHitTesting(false)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous))
-        .zIndex(1)
     }
 
-    private var operatorIdentityPodiPhone: some View {
-        Button(action: onAccount) {
-            HStack(alignment: .center, spacing: 10) {
-                let imageSide = min(avatarSide, 48)
-                ZStack(alignment: .bottomTrailing) {
-                    AdminRemoteImage(
-                        url: resolvedAvatarURL,
-                        contentMode: .fill,
-                        targetSize: CGSize(width: imageSide, height: imageSide)
-                    ) {
-                        ZStack {
-                            LinearGradient(
-                                colors: [
-                                    Color(uiColor: .ppPrimary).opacity(0.18),
-                                    Color(uiColor: .ppSoftRose).opacity(0.38)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            Text(monogram)
-                                .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
-                                .foregroundStyle(actionInk)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    .frame(width: imageSide, height: imageSide)
-                    .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                    }
+    private var stackedDetails: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                sourceControl
+                    .layoutPriority(1)
+                rule
+            }
+            accountControl
+        }
+    }
 
-                    // Online staff activity beacon dot
-                    Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 9, height: 9)
-                        .overlay(
-                            Circle()
-                                .stroke(Color(uiColor: .ppSurface), lineWidth: 1.5)
-                        )
-                        .offset(x: 2, y: 2)
-                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.5), radius: 2)
+    private var rule: some View {
+        Rectangle()
+            .fill(contrast == .increased ? secondaryInk : AdminSurface.hairline)
+            .frame(height: contrast == .increased ? 1 : 1 / max(displayScale, 1))
+            .accessibilityHidden(true)
+    }
+
+    // A fixed scope is a heading; only an actual choice becomes a button.
+    private var branchControl: some View {
+        Group {
+            if canSwitchBranch {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    onSelectBranch()
+                } label: {
+                    branchHeading
                 }
+                .buttonStyle(CommandHeaderPressStyle())
+            } else {
+                branchHeading.accessibilityElement(children: .ignore)
+            }
+        }
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(Language.get(canSwitchBranch ? "BranchContext_Switcher_Title" : "AdminCommandCenter_Header_WorkingBranch", alter: nil))
+        .accessibilityValue(branchVoiceValue)
+        .accessibilityIdentifier(isRegular ? "admin.command.header.branch.ipad" : "admin.command.header.branch")
+        .accessibilitySortPriority(4)
+    }
+
+    private var visibleBranchCode: String? {
+        let code = branchCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty, code.caseInsensitiveCompare(branchName) != .orderedSame else { return nil }
+        return code
+    }
+
+    private var branchVoiceValue: String {
+        guard let code = visibleBranchCode else { return branchName }
+        return "\(branchName). \(Language.get("Branches_Code", alter: nil)) \u{2066}\(code)\u{2069}"
+    }
+
+    private var branchHeading: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            let captionLayout = typeSize >= .xxxLarge
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 1))
+                : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 8))
+            captionLayout {
+                HStack(spacing: 6) {
+                    Capsule()
+                        .fill(actionInk)
+                        .frame(width: 14, height: 3)
+                    Text(Language.get("AdminCommandCenter_Header_WorkingBranch", alter: nil))
+                        .font(PPBrandFont.medium(size: 13, relativeTo: .footnote))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(secondaryInk)
+                .layoutPriority(1)
+
+                if let code = visibleBranchCode {
+                    Text(verbatim: code)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(secondaryInk)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: branchName)
+                    .font(PPBrandFont.bold(size: isRegular ? 38 : 32, relativeTo: .largeTitle))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: branchName)
+
+                if canSwitchBranch {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(.footnote, design: .rounded).weight(.bold))
+                        .foregroundStyle(actionInk)
+                        .fixedSize()
+                }
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .frame(minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private var sourceControl: some View {
+        Group {
+            if sourceStatus.showsRecovery {
+                Button(action: onReviewSources) { sourceLabel }
+                    .buttonStyle(CommandHeaderPressStyle())
+                    .accessibilityHint(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: nil))
+            } else {
+                sourceLabel.accessibilityElement(children: .combine)
+            }
+        }
+        .accessibilityLabel(sourceStatus.title)
+        .accessibilityIdentifier(isRegular ? "admin.command.header.readiness.ipad" : "admin.command.header.readiness")
+        .accessibilitySortPriority(3)
+    }
+
+    private var sourceLabel: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: sourceStatus.symbol)
+                .font(.system(.footnote).weight(.semibold))
+                .foregroundStyle(sourceStatus.showsRecovery && contrast != .increased ? sourceStatus.tone.accent : secondaryInk)
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(resolvedDisplayName)
+            Text(verbatim: sourceStatus.title)
+                .font(PPBrandFont.medium(size: 14, relativeTo: .footnote))
+                .foregroundStyle(sourceStatus.showsRecovery ? AdminSurface.primaryText : secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+
+            if sourceStatus.showsRecovery {
+                Image(systemName: "chevron.forward")
+                    .font(.system(.caption2).weight(.bold))
+                    .foregroundStyle(actionInk)
+                    .accessibilityHidden(true)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .frame(minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: sourceStatus)
+    }
+
+    private var accountTitle: String {
+        displayName.isEmpty ? Language.get("Account_Section", alter: nil) : displayName
+    }
+
+    private var accountControl: some View {
+        Button(action: onAccount) {
+            HStack(spacing: 8) {
+                accountTag.accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: accountTitle)
                         .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    let roleLayout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
-                        : AnyLayout(HStackLayout(alignment: .center, spacing: 5))
-                    roleLayout {
-                        Text("ADMIN")
-                            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
-                            .foregroundStyle(actionInk)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(actionInk.opacity(0.10), in: Capsule())
-                            .overlay(Capsule().strokeBorder(actionInk.opacity(0.20), lineWidth: 0.5))
-
-                        Text(roleName)
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                    if !roleName.isEmpty && roleName != accountTitle {
+                        Text(verbatim: roleName)
+                            .font(PPBrandFont.regular(size: 12, relativeTo: .caption))
                             .foregroundStyle(secondaryInk)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(minHeight: 44)
+            .multilineTextAlignment(.leading)
+            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(CommandHeaderPressStyle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(resolvedDisplayName)
-        .accessibilityValue("\(roleName), \(capabilityText)")
-        .accessibilityHint(Language.get("EditMyAccount_Title", alter: nil))
-        .accessibilityIdentifier("admin.command.header.account")
+        .accessibilityLabel(accountTitle)
+        .accessibilityValue(accountDetail)
+        .accessibilityHint(Language.get("AdminCommandCenter_AccountHint", alter: nil))
+        .accessibilityIdentifier(isRegular ? "admin.command.header.account.ipad" : "admin.command.header.account")
+        .accessibilitySortPriority(2)
     }
 
-    private var flightUtilityClusteriPhone: some View {
-        sidePanelTriggerButton(size: 36)
-    }
-
-    private var workingBranchChamberiPhone: some View {
-        Button(action: triggerBranchSwitch) {
-            HStack(alignment: .center, spacing: 10) {
-                // Tactical Branch Storefront Icon Well
+    private var accountTag: some View {
+        let width = min(tagWidth, 42)
+        let height = width * 1.20
+        let initials = displayName.split(whereSeparator: \.isWhitespace).prefix(2).compactMap(\.first).map(String.init).joined()
+        let outline = StaffTagShape()
+        return ZStack(alignment: .top) {
+            outline.fill(Color(uiColor: .ppSoftRose))
+            AdminRemoteImage(url: resolvedAvatarURL, contentMode: .fill,
+                             targetSize: CGSize(width: width, height: height)) {
                 ZStack {
-                    LinearGradient(
-                        colors: canSwitchBranch
-                            ? [Color(uiColor: .ppPrimary), Color(uiColor: .ppPrimary).opacity(0.82)]
-                            : [AdminSurface.control, AdminSurface.hairline],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-
-                    Image(systemName: "storefront.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(canSwitchBranch ? Color.white : secondaryInk)
-                }
-                .frame(width: 38, height: 38)
-                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                .shadow(
-                    color: canSwitchBranch ? Color(uiColor: .ppPrimary).opacity(0.24) : Color.clear,
-                    radius: 6,
-                    y: 2
-                )
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(Language.get("AdminCommandCenter_Header_BranchScope", alter: "فرع التشغيل المعتمد"))
-                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                            .foregroundStyle(secondaryInk)
-
-                        Circle()
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: 5, height: 5)
-                    }
-
-                    Text(currentBranchDisplayName)
-                        .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .multilineTextAlignment(.leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if canSwitchBranch {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9, weight: .bold))
-                        Text(Language.get("AdminCommandCenter_Header_Switch", alter: "تبديل"))
-                            .font(PPBrandFont.bold(size: 11, relativeTo: .caption))
-                    }
-                    .foregroundStyle(Color(uiColor: .ppPrimary))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        Color(uiColor: .ppPrimary).opacity(0.10),
-                        in: Capsule(style: .continuous)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.25), lineWidth: 0.75)
-                    )
-                    .accessibilityHidden(true)
-                } else if !branchContextStore.availableBranches.isEmpty {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(secondaryInk)
-                        .frame(width: 36, height: 36)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(CommandHeaderPressStyle())
-        .disabled(!canSwitchBranch)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Language.get(
-            canSwitchBranch ? "BranchContext_Switcher_Title" : "AdminCommandCenter_Header_WorkingBranch",
-            alter: nil
-        ))
-        .accessibilityValue(currentBranchDisplayName)
-        .accessibilityIdentifier("admin.command.header.branch")
-    }
-
-    // This sibling owns source details; branch switching never encloses its tap.
-    private var readinessControliPhone: some View {
-        Group {
-            if let onReadinessTap {
-                Button(action: onReadinessTap) {
-                    branchStatsBadge
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(CommandHeaderPressStyle())
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(readinessText)
-                .accessibilityHint(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: nil))
-            } else {
-                branchStatsBadge
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(readinessText)
-            }
-        }
-        .accessibilityIdentifier("admin.command.header.readiness")
-    }
-
-    private var branchStatsBadge: some View {
-        HStack(alignment: .center, spacing: 7) {
-            ZStack {
-                Circle()
-                    .fill(readinessTone.accent.opacity(0.20))
-                    .frame(width: 16, height: 16)
-                    .scaleEffect(pulseBeacon ? 1.25 : 0.95)
-                    .opacity(pulseBeacon ? 0.7 : 1.0)
-                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: pulseBeacon)
-
-                Circle()
-                    .fill(readinessTone.accent)
-                    .frame(width: 6.5, height: 6.5)
-            }
-            .frame(width: 16, height: 16)
-            .accessibilityHidden(true)
-
-            Text(readinessText)
-                .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption))
-                .foregroundStyle(secondaryInk)
-                .lineLimit(1)
-                .multilineTextAlignment(.leading)
-
-            Spacer(minLength: 4)
-
-            if onReadinessTap != nil {
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(readinessTone.accent)
-                    .accessibilityHidden(true)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            AdminSurface.control.opacity(0.65),
-            in: Capsule(style: .continuous)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(readinessTone.accent.opacity(0.25), lineWidth: 0.75)
-        )
-        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-        .onAppear {
-            DispatchQueue.main.async {
-                pulseBeacon = true
-            }
-        }
-    }
-
-    private var isLandscapeIPad: Bool {
-        containerWidth >= 950
-    }
-
-    // MARK: - iPad Aerospace Command Bar
-    private var ipadCommandBar: some View {
-        HStack(alignment: .center, spacing: isLandscapeIPad ? 16 : 10) {
-            // Wing 1: Working Branch Control Station
-            workingBranchIPadStation
-
-            Spacer(minLength: isLandscapeIPad ? 12 : 6)
-
-            // Wing 2: Real-Time Telemetry & Readiness Radar
-            readinessControlIPad
-
-            Spacer(minLength: isLandscapeIPad ? 12 : 6)
-
-            // Wing 3: Utility Flight Tools + Operator Identity Capsule
-            HStack(spacing: isLandscapeIPad ? 10 : 8) {
-                accountSignatureIPad
-                sidePanelTriggerButton(size: 36)
-            }
-        }
-        .padding(.horizontal, isLandscapeIPad ? 18 : 14)
-        .padding(.vertical, 10)
-        .background(
-            CommandCenterCockpitBackground(readinessTone: readinessTone, cornerRadius: CommandCorner.hero)
-                .allowsHitTesting(false)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: CommandCorner.hero, style: .continuous))
-        .zIndex(1)
-    }
-
-    private var workingBranchIPadStation: some View {
-        Button(action: triggerBranchSwitch) {
-            HStack(alignment: .center, spacing: isLandscapeIPad ? 12 : 8) {
-                // Branch Storefront Glyphed Squircle with gradient
-                ZStack {
-                    LinearGradient(
-                        colors: canSwitchBranch
-                            ? [Color(uiColor: .ppPrimary), Color(uiColor: .ppPrimary).opacity(0.82)]
-                            : [AdminSurface.control, AdminSurface.hairline],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-
-                    Image(systemName: "storefront.fill")
-                        .font(.system(size: isLandscapeIPad ? 16 : 14, weight: .bold))
-                        .foregroundStyle(canSwitchBranch ? Color.white : secondaryInk)
-                }
-                .frame(width: isLandscapeIPad ? 42 : 36, height: isLandscapeIPad ? 42 : 36)
-                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                .shadow(
-                    color: canSwitchBranch ? Color(uiColor: .ppPrimary).opacity(0.24) : Color.clear,
-                    radius: 6,
-                    y: 2
-                )
-
-                VStack(alignment: .leading, spacing: 1) {
-                    if isLandscapeIPad {
-                        HStack(spacing: 5) {
-                            Text(Language.get("AdminCommandCenter_Header_WorkingBranch", alter: "فرع العمل والتشغيل"))
-                                .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
-                                .foregroundStyle(secondaryInk)
-
-                            Circle()
-                                .fill(Color(uiColor: .ppSuccess))
-                                .frame(width: 5.5, height: 5.5)
-                        }
-                    }
-
-                    Text(currentBranchDisplayName)
-                        .font(PPBrandFont.bold(size: isLandscapeIPad ? 18 : 15, relativeTo: .title3))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-
-                if canSwitchBranch {
-                    HStack(spacing: 3) {
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 8.5, weight: .bold))
-                        if isLandscapeIPad {
-                            Text(Language.get("AdminCommandCenter_Header_Switch", alter: "تبديل"))
-                                .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption))
-                        }
-                    }
-                    .foregroundStyle(Color(uiColor: .ppPrimary))
-                    .padding(.horizontal, isLandscapeIPad ? 9 : 6)
-                    .padding(.vertical, 5)
-                    .background(
-                        Color(uiColor: .ppPrimary).opacity(0.10),
-                        in: Capsule(style: .continuous)
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.25), lineWidth: 0.75)
-                    )
-                } else if !branchContextStore.availableBranches.isEmpty {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(secondaryInk)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(CommandHeaderPressStyle())
-        .disabled(!canSwitchBranch)
-        .accessibilityLabel(Language.get(
-            canSwitchBranch ? "BranchContext_Switcher_Title" : "AdminCommandCenter_Header_WorkingBranch",
-            alter: nil
-        ))
-        .accessibilityValue(currentBranchDisplayName)
-        .accessibilityIdentifier("admin.command.header.branch.ipad")
-    }
-
-    private var readinessControlIPad: some View {
-        Group {
-            if let onReadinessTap {
-                Button(action: onReadinessTap) {
-                    readinessContentIPad
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(CommandHeaderPressStyle())
-                .accessibilityLabel(readinessText)
-                .accessibilityHint(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: nil))
-                .accessibilityIdentifier("admin.command.header.readiness.ipad")
-            } else {
-                readinessContentIPad
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(readinessText)
-                    .accessibilityIdentifier("admin.command.header.readiness.ipad")
-            }
-        }
-    }
-
-    private var readinessContentIPad: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(readinessTone.accent.opacity(0.20))
-                    .frame(width: 18, height: 18)
-                    .scaleEffect(pulseBeacon ? 1.25 : 0.95)
-                    .opacity(pulseBeacon ? 0.7 : 1.0)
-                    .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: pulseBeacon)
-
-                Circle()
-                    .fill(readinessTone.accent)
-                    .frame(width: 7.5, height: 7.5)
-            }
-            .frame(width: 18, height: 18)
-
-            Text(readinessText)
-                .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
-                .foregroundStyle(AdminSurface.primaryText)
-                .lineLimit(1)
-
-            if onReadinessTap != nil {
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(readinessTone.accent)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            AdminSurface.control,
-            in: Capsule(style: .continuous)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(readinessTone.accent.opacity(0.25), lineWidth: 0.75)
-        )
-        .onAppear {
-            DispatchQueue.main.async {
-                pulseBeacon = true
-            }
-        }
-    }
-
-    private var utilityActionsIPad: some View {
-        // Language Matrix Switcher
-        Button(action: onLanguage) {
-            HStack(spacing: 5) {
-                Image(systemName: "globe")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(languageTitle)
-                    .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
-                    .environment(\.layoutDirection, .leftToRight)
-            }
-            .foregroundStyle(AdminSurface.primaryText)
-            .padding(.horizontal, isLandscapeIPad ? 14 : 10)
-            .frame(height: 36)
-            .background(
-                AdminSurface.control,
-                in: RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(CommandHeaderPressStyle())
-        .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
-        .accessibilityValue(languageTitle)
-        .accessibilityIdentifier("admin.command.header.language.ipad")
-    }
-
-    private var accountSignatureIPad: some View {
-        Button(action: onAccount) {
-            HStack(spacing: 9) {
-                AdminRemoteImage(
-                    url: resolvedAvatarURL,
-                    contentMode: .fill,
-                    targetSize: CGSize(width: 36, height: 36)
-                ) {
-                    ZStack {
-                        LinearGradient(
-                            colors: [
-                                Color(uiColor: .ppPrimary).opacity(0.16),
-                                Color(uiColor: .ppSoftRose).opacity(0.40)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        Text(monogram)
-                            .font(PPBrandFont.bold(size: 14, relativeTo: .subheadline))
-                            .foregroundStyle(actionInk)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: CommandCorner.control, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                )
-
-                if isLandscapeIPad {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(resolvedDisplayName)
+                    Color(uiColor: .ppSoftRose)
+                    if initials.isEmpty {
+                        Image(systemName: "person.fill").font(.footnote)
+                    } else {
+                        Text(verbatim: initials.uppercased())
                             .font(PPBrandFont.bold(size: 14, relativeTo: .footnote))
-                            .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-
-                        HStack(spacing: 4) {
-                            Text(roleName)
-                                .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
-                                .foregroundStyle(secondaryInk)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-
-                            Text("•")
-                                .font(.system(size: 8))
-                                .foregroundStyle(secondaryInk.opacity(0.5))
-
-                            Text("ADMIN")
-                                .font(.system(size: 8.5, weight: .heavy, design: .rounded))
-                                .foregroundStyle(actionInk)
-                        }
+                            .minimumScaleFactor(0.7)
                     }
                 }
+                .foregroundStyle(actionInk)
             }
-            .contentShape(Rectangle())
+            .frame(width: width, height: height - 8)
+            .clipped()
+            .padding(.top, 8)
+
+            // Eyelet in the tag itself. It carries no presence or permission meaning.
+            Circle()
+                .fill(AdminSurface.background)
+                .overlay(Circle().strokeBorder(actionInk, lineWidth: 0.8))
+                .frame(width: 4.5, height: 4.5)
+                .padding(.top, 2.5)
         }
-        .buttonStyle(CommandHeaderPressStyle())
-        .accessibilityLabel(resolvedDisplayName)
-        .accessibilityValue("\(roleName), \(capabilityText)")
-        .accessibilityIdentifier("admin.command.header.account.ipad")
+        .frame(width: width, height: height)
+        .clipShape(outline)
+        .overlay(outline.stroke(contrast == .increased ? secondaryInk : AdminSurface.hairline, lineWidth: 1))
     }
 
+    private var resolvedAvatarURL: URL? {
+        if let url = AdminRemoteImageCache.sanitizeURL(from: avatarURL) { return url }
+        guard let signedIn = Auth.auth().currentUser else { return nil }
 
-    // MARK: - NextGen V9 Side Panel Trigger & Actions
-
-    private var moreActionsMenu: some View {
-        sidePanelTriggerButton(size: 38)
+        if let user = UserManager.shared().currentUser, user.uid == signedIn.uid {
+            for candidate in [user.photoURL, user.userImageUrl?.absoluteString, user.userImageName] {
+                if let url = AdminRemoteImageCache.sanitizeURL(from: candidate) { return url }
+            }
+        }
+        if let staff = PPStaffAuth.shared().cachedCurrentStaff, staff.uid == signedIn.uid,
+           let url = AdminRemoteImageCache.sanitizeURL(from: staff.photoURL) { return url }
+        return signedIn.photoURL
     }
 
-    private func moreActionsMenu(size: CGFloat) -> some View {
-        sidePanelTriggerButton(size: size)
-    }
-
-    private func sidePanelTriggerButton(size: CGFloat) -> some View {
+    private var moreButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onOpenSidePanel()
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(.body, design: .rounded).weight(.bold))
                 .foregroundStyle(AdminSurface.primaryText)
-                .frame(width: size, height: size)
-                .background(
-                    AdminSurface.control,
-                    in: RoundedRectangle(cornerRadius: isRegular ? CommandCorner.control : size / 2, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: isRegular ? CommandCorner.control : size / 2, style: .continuous)
-                        .strokeBorder(isRegular ? AdminSurface.hairline : .clear, lineWidth: 0.75)
-                )
+                .frame(width: 34, height: 34)
+                .background(AdminSurface.surface, in: Circle())
+                .overlay(Circle().strokeBorder(contrast == .increased ? secondaryInk : AdminSurface.hairline, lineWidth: 1))
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(CommandHeaderPressStyle())
-        .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: "المزيد"))
+        .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
         .accessibilityIdentifier("admin.command.header.more")
+        .accessibilitySortPriority(1)
     }
+}
 
-    // MARK: - Existing Context and Identity Resolution
-
-    private var currentBranchDisplayName: String {
-        let name = branchContextStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? Language.get("BranchContext_SelectBranch_Prompt", alter: nil) : name
-    }
-
-    private var canSwitchBranch: Bool {
-        branchContextStore.availableBranches.count > 1
-    }
-
-    private func triggerBranchSwitch() {
-        guard canSwitchBranch else { return }
-        let feedback = UIImpactFeedbackGenerator(style: .soft)
-        feedback.prepare()
-        feedback.impactOccurred(intensity: 0.82)
-        onSelectBranch()
-    }
-
-    private var resolvedDisplayName: String {
-        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? roleName : trimmedName
-    }
-
-    private var resolvedAvatarURL: URL? {
-        let trimmedURL = avatarURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedURL.isEmpty, let url = URL(string: trimmedURL) {
-            return url
+/// Shoulder and eyelet proportions of a small collar tag, sized in local coordinates.
+private struct StaffTagShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
         }
-        if let user = UserManager.shared().currentUser {
-            if let photo = user.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                return url
-            }
-            if let imgUrl = user.userImageUrl {
-                return imgUrl
-            }
-            if let name = user.userImageName, let url = URL(string: name), !name.isEmpty {
-                return url
-            }
-        }
-        if let staffPhoto = PPStaffAuth.shared().cachedCurrentStaff?.photoURL, let url = URL(string: staffPhoto), !staffPhoto.isEmpty {
-            return url
-        }
-        if let authPhoto = Auth.auth().currentUser?.photoURL {
-            return authPhoto
-        }
-        return nil
-    }
-
-    private var monogram: String {
-        let parts = resolvedDisplayName.split(separator: " ").prefix(2)
-        let letters = parts.compactMap(\.first).map(String.init).joined()
-        return letters.isEmpty ? "PP" : letters.uppercased()
+        var path = Path()
+        path.move(to: point(0.37, 0))
+        path.addLine(to: point(0.63, 0))
+        path.addQuadCurve(to: point(0.72, 0.04), control: point(0.69, 0))
+        path.addLine(to: point(0.96, 0.23))
+        path.addQuadCurve(to: point(1, 0.32), control: point(1, 0.26))
+        path.addLine(to: point(1, 0.78))
+        path.addQuadCurve(to: point(0.74, 1), control: point(1, 1))
+        path.addLine(to: point(0.26, 1))
+        path.addQuadCurve(to: point(0, 0.78), control: point(0, 1))
+        path.addLine(to: point(0, 0.32))
+        path.addQuadCurve(to: point(0.04, 0.23), control: point(0, 0.26))
+        path.addLine(to: point(0.28, 0.04))
+        path.addQuadCurve(to: point(0.37, 0), control: point(0.31, 0))
+        path.closeSubpath()
+        return path
     }
 }
 

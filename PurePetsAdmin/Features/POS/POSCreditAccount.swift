@@ -470,8 +470,9 @@ final class POSCreditAccountModel: ObservableObject {
         let rows = invoices.filter { amounts[$0.id] != nil }
         var body = base(); body["commandId"] = UUID().uuidString; body["expectedAccountVersion"] = accountVersion
         body["method"] = method; body["accountId"] = accountID; body["reference"] = reference.trimmingCharacters(in: .whitespacesAndNewlines)
-        body["allocations"] = rows.map { invoice -> [String: Any] in
-            var row: [String: Any] = ["invoiceId": invoice.id, "expectedVersion": invoice.version, "amountMinor": amounts[invoice.id]!]
+        body["allocations"] = rows.compactMap { invoice -> [String: Any]? in
+            guard let amountMinor = amounts[invoice.id] else { return nil }
+            var row: [String: Any] = ["invoiceId": invoice.id, "expectedVersion": invoice.version, "amountMinor": amountMinor]
             if let selected = installments[invoice.id] {
                 row["installmentAllocations"] = invoice.installments.compactMap { entry -> [String: Any]? in
                     guard let amount = selected[entry.id] else { return nil }
@@ -1487,7 +1488,9 @@ struct POSCreditAccountSheet: View {
             guard let today = f.date(from: model.asOf) else { return false }
             return invoice.installments.contains { row in
                 guard row.due > 0, let date = f.date(from: row.dueDateKey) else { return false }
-                let days = Int(today.timeIntervalSince(date) / 86400)
+                let diffDays = today.timeIntervalSince(date) / 86400
+                guard diffDays.isFinite else { return false }
+                let days = Int(min(max(diffDays, -9_000_000_000_000_000.0), 9_000_000_000_000_000.0))
                 let bucket = days <= 0 ? "current" : days <= 30 ? "days1to30" : days <= 60 ? "days31to60" : days <= 90 ? "days61to90" : "days90plus"
                 return aging == bucket
             }
@@ -1553,7 +1556,8 @@ struct POSCreditAccountSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.customerName?.isEmpty == false ? model.customerName! : t("CollectionCustomer"))
+                    let nameText = (model.customerName?.isEmpty == false ? model.customerName : nil) ?? t("CollectionCustomer")
+                    Text(nameText)
                         .font(PPBrandFont.bold(26, relativeTo: .title2))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)

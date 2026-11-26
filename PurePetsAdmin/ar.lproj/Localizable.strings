@@ -3417,6 +3417,8 @@
 "ConfirmDelete_Branch_Format" = "هل أنت متأكد من رغبتك في حذف الفرع \"%@\" نهائياً؟ لن تتمكن من استرجاع هذا الفرع بعد الحذف.";
 "Branches_Deactivate_Confirm_Format" = "هل تريد تعطيل الفرع \"%@\"؟ لن يظهر هذا الفرع في عمليات البيع حتى يتم تنشيطه مجدداً.";
 "Branches_Cannot_Delete_Default" = "لا يمكن حذف الفرع الرئيسي الافتراضي.";
+"Branches_Cannot_Deactivate_Default" = "لا يمكن تعطيل الفرع الرئيسي الافتراضي قبل تعيين فرع رئيسي آخر.";
+"Branches_Cannot_Set_Inactive_Default" = "فعّل الفرع أولاً قبل تعيينه كفرع رئيسي افتراضي.";
 "Branches_Telemetry_Total" = "إجمالي الفروع";
 "Branches_Telemetry_Active" = "الفروع النشطة";
 "Branches_Telemetry_Default" = "الفرع الرئيسي";
@@ -4107,6 +4109,12 @@
 "AdminCommandCenter_Header_Switch" = "تبديل";
 "AdminCommandCenter_Header_FixedBranchHint" = "لا يتوفر فرع آخر للتبديل إليه.";
 "AdminCommandCenter_Header_Language_Format" = "التبديل إلى %@";
+"AdminCommandCenter_Header_UnnamedBranch" = "اسم الفرع غير متاح";
+"AdminCommandCenter_Header_Unconfirmed" = "لم يصل تحديث من المصادر بعد";
+"AdminCommandCenter_Header_NoSourceErrors" = "لم تُسجَّل أخطاء في المصادر";
+"AdminCommandCenter_Header_SourceFailed_Format" = "تعذّر تحديث بيانات %@";
+"AdminCommandCenter_Header_SourcesFailed" = "تعذّر تحديث بعض البيانات";
+"AdminCommandCenter_SourceIssue_LastChecked_Format" = "آخر فحص %@";
 "AdminCommandCenter_Retry" = "إعادة المحاولة";
 "AdminCommandCenter_SourceIssue_SheetTitle" = "تفاصيل مشكلة المصدر";
 "AdminCommandCenter_SourceIssue_SheetDetail" = "تعذّر على لوحة العمليات تأكيد البيانات الحالية من هذه المصادر. تبقى مسارات العمل الأخرى المتاحة قابلة للاستخدام.";
@@ -13931,3 +13939,11 @@
 "Fulfillment_Ledger_RecordedOrderDeliveryFee" = "رسوم توصيل الطلب بالكامل";
 "Fulfillment_Ledger_UnknownFee" = "غير محددة";
 "PaymentMgmt_Field_RecordedDeliveryFeeUnavailable" = "رسوم التوصيل غير مسجلة لهذا الطلب";
+
+/* POS Progressive Search */
+"POS_Search_RecentTitle" = "عمليات بحث أخيرة";
+"POS_Search_QuickMatches" = "نتائج فورية";
+"POS_Search_SearchAllScopeFormat" = "ابحث في كل المنتجات (%ld)";
+"POS_Search_ClearHistory" = "مسح السجل";
+"POS_Search_ProgressiveCount_Format" = "%ld مطابقة";
+"POS_Search_VariantsCount_Format" = "%ld خيارات";

@@ -87,15 +87,13 @@ public struct InventoryLotsSheet: View {
     // MARK: - Computed Telemetry & Radar
 
     private var resolvedBranchID: String {
-        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty && trimmed != "all_branches" {
-            return trimmed
-        }
-        if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-            return active
-        }
-        let resolved = item.resolvedBranchID()
-        return !resolved.isEmpty ? resolved : (item.storeID ?? "main_store")
+        PPBranchInventoryResolver.resolveWorkingBranchID(
+            explicitBranchID: branchId,
+            activeBranchID: BranchContextStore.shared.activeBranch?.branchID,
+            systemDefaultBranchID: BranchContextStore.shared.systemDefaultBranch?.branchID,
+            availableBranchIDs: BranchContextStore.shared.availableBranches.map(\.branchID),
+            needsBranchSelection: BranchContextStore.shared.needsBranchSelection
+        ) ?? PPBranchInventoryResolver.canonicalBranchID(item.resolvedBranchID() ?? item.storeID) ?? ""
     }
 
     private var activeLots: [PPInventoryLot] {
@@ -513,7 +511,7 @@ public struct InventoryLotsSheet: View {
                         Circle()
                             .fill(Color(uiColor: .ppSuccess))
                             .frame(width: 6, height: 6)
-                        Text(item.resolvedBranchName())
+                        Text(resolvedBranchID.isEmpty ? item.resolvedBranchName() : BranchContextStore.shared.localizedBranchName(for: resolvedBranchID, fallback: item.resolvedBranchName()))
                             .font(Font.custom("Beiruti-SemiBold", size: 12))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
