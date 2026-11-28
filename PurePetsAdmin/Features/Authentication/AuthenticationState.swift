@@ -285,9 +285,8 @@ final class AuthenticationState: ObservableObject {
         canUseBiometric = service.canUseBiometric
         if success {
             password = ""
-            verificationCode = ""
-            countdownTimer?.cancel()
-            countdownTimer = nil
+            revealPassword = false
+            resetPhoneFlow()
             onAuthenticated()
         } else if let message, !message.isEmpty {
             alert = AdminAuthenticationAlert(title: localized("Error"), message: message)

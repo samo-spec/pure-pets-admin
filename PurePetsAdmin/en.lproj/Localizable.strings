@@ -3670,6 +3670,13 @@
 /* SwiftUI Admin Root and Command Center */
 "Close" = "Close";
 "Chats" = "Chats";
+"StaffLogin_Brand" = "Pure Pets Admin";
+"StaffLogin_Title" = "Staff sign-in";
+"StaffLogin_CodeTitle" = "Check your messages";
+"StaffLogin_CodeDestination" = "Enter the code sent to %@.";
+"StaffLogin_OtherMethods" = "Other ways to sign in";
+"StaffLogin_OtherLanguage" = "العربية";
+"StaffLogin_SwitchLanguage" = "Switch to Arabic";
 "CommandCenter_Login_Footer" = "Pure Pets staff workspace";
 "CommandCenter_Staff_Access" = "Staff access";
 "CommandCenter_Login_Eyebrow" = "Pure Pets operations";

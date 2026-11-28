@@ -378,7 +378,8 @@ struct AdminAppRoot: View {
             }
         }
         .id(sessionStore.languageCode)
-        .ignoresSafeArea()
+        // Login scrolls inside the keyboard and window safe areas.
+        .ignoresSafeArea(.all, edges: sessionStore.state == .unauthenticated ? [] : .all)
         .environment(\.layoutDirection, sessionStore.languageCode == "ar" ? .rightToLeft : .leftToRight)
         .environment(\.locale, Locale(identifier: sessionStore.languageCode == "ar" ? "ar_QA" : "en_QA"))
         .onChange(of: sessionStore.languageCode) { _ in

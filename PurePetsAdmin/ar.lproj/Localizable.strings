@@ -3720,6 +3720,13 @@
 /* جذر الإدارة ومركز القيادة عبر SwiftUI */
 "Close" = "إغلاق";
 "Chats" = "المحادثات";
+"StaffLogin_Brand" = "إدارة بيور بتس";
+"StaffLogin_Title" = "دخول الفريق";
+"StaffLogin_CodeTitle" = "تحقّق من رسائلك";
+"StaffLogin_CodeDestination" = "أدخل الرمز المُرسل إلى %@.";
+"StaffLogin_OtherMethods" = "طرق دخول أخرى";
+"StaffLogin_OtherLanguage" = "English";
+"StaffLogin_SwitchLanguage" = "التبديل إلى الإنجليزية";
 "CommandCenter_Login_Footer" = "مساحة عمل فريق Pure Pets";
 "CommandCenter_Staff_Access" = "وصول الفريق";
 "CommandCenter_Login_Eyebrow" = "عمليات Pure Pets";

@@ -2,1019 +2,401 @@ import SwiftUI
 import UIKit
 
 private enum AdminLoginField: Hashable {
-    case phone
-    case verificationCode
-    case email
-    case password
+    case phone, verificationCode, email, password
 }
 
 @MainActor
 struct AdminLoginView: View {
     @ObservedObject var state: AuthenticationState
-    @FocusState private var focusedField: AdminLoginField?
-    @State private var isMoreMenuPresented: Bool = false
-    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @FocusState private var focus: AdminLoginField?
+
+    private var enteringCode: Bool { state.authMode == .phone && state.isCodeSent }
+    private var accent: Color { Color(uiColor: .ppAccentText) }
 
     var body: some View {
         GeometryReader { geometry in
-            let windowTopInset = UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow }?.safeAreaInsets.top ?? 0
-            let statusBarHeight = max(geometry.safeAreaInsets.top, windowTopInset > 0 ? windowTopInset : 47)
+            let wide = geometry.size.width >= 800 && !typeSize.isAccessibilitySize
+            let layout = wide
+                ? AnyLayout(HStackLayout(alignment: .center, spacing: 0))
+                : AnyLayout(VStackLayout(alignment: .center, spacing: 0))
 
-            ZStack {
-                AdminLoginAtmosphere()
-                    .ignoresSafeArea()
-
-                if geometry.size.width >= 760, geometry.size.height >= 620 {
-                    expansiveGateway(in: geometry, statusBarHeight: statusBarHeight)
-                } else {
-                    accessColumn(showsIdentity: true, statusBarHeight: statusBarHeight)
+            ScrollView {
+                layout {
+                    masthead(wide: wide)
+                    LoginPassFold(vertical: wide)
+                    form
+                        .padding(wide ? 36 : 22)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .background(AdminSurface.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .frame(maxWidth: wide ? 900 : 510)
+                .padding(.horizontal, wide ? 40 : 16)
+                .padding(.vertical, wide ? 32 : 16)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .foregroundStyle(AdminSurface.primaryText)
+        .font(AdminType.body)
+        .tint(accent)
         .environment(\.layoutDirection, state.isRTL ? .rightToLeft : .leftToRight)
+        .onChange(of: state.isCodeSent) { _, sent in
+            if sent && state.authMode == .phone { focus = .verificationCode }
+        }
         .alert(item: $state.alert) { alert in
-            Alert(
-                title: Text(alert.title),
-                message: Text(alert.message),
-                dismissButton: .default(Text(state.localized("OK")))
-            )
+            Alert(title: Text(alert.title), message: Text(alert.message),
+                  dismissButton: .default(Text(state.localized("OK"))))
         }
     }
 
-    private func expansiveGateway(in geometry: GeometryProxy, statusBarHeight: CGFloat) -> some View {
-        HStack(spacing: 32) {
-            identityObservatory
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            accessColumn(showsIdentity: false, statusBarHeight: statusBarHeight)
-                .frame(width: min(560, max(420, geometry.size.width * 0.44)))
-                .background(AdminSurface.surface.opacity(0.82), in: RoundedRectangle(cornerRadius: 40, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 40, style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 1)
-                )
-        }
-        .padding(32)
-    }
-
-    private func accessColumn(showsIdentity: Bool, statusBarHeight: CGFloat) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 24) {
-                commandRail
-                    .padding(.top, statusBarHeight)
-                    .zIndex(100)
-
-                if showsIdentity {
-                    compactIdentity
-                        .zIndex(1)
-                }
-
-                accessCapsule
-                    .zIndex(1)
-                securityFootprint
-                    .zIndex(1)
-            }
-            .frame(maxWidth: 580)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 20)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboardCompat()
-    }
-
-    private var commandRail: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.shield.fill")
-                    .symbolRenderingMode(.hierarchical)
-                    .font(.system(size: 15, weight: .semibold))
+    private func masthead(wide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: wide ? 32 : 14) {
+            HStack(alignment: .center, spacing: 12) {
+                Image("pure shelid icon filled full size")
+                    .renderingMode(.original)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: wide ? 90 : 56, height: wide ? 90 : 56)
                     .accessibilityHidden(true)
-                Text(state.localized("CommandCenter_Staff_Access"))
-                    .lineLimit(1)
-            }
-            .font(AdminType.captionBold)
-            .foregroundColor(AdminSurface.primary)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-            .accessibilityElement(children: .combine)
-
-            Spacer(minLength: 12)
-
-            Button(action: state.toggleLanguage) {
-                HStack(spacing: 7) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 15, weight: .semibold))
-                        .accessibilityHidden(true)
-                    Text(state.languageToggleLabel)
+                Spacer(minLength: 0)
+                Button(action: state.toggleLanguage) {
+                    Label(state.localized("StaffLogin_OtherLanguage"), systemImage: "globe")
+                        .font(AdminType.calloutBold)
+                        .frame(minHeight: 44)
                 }
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.primaryText)
-                .padding(.horizontal, 13)
-                .frame(minHeight: 44)
-                .background(AdminSurface.control, in: Capsule())
-                .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 1))
+                .accessibilityLabel(state.localized("StaffLogin_SwitchLanguage"))
+                .disabled(state.isBusy)
             }
-            .buttonStyle(AdminLoginPressStyle())
-            .accessibilityLabel(state.localized("Confirm_LanguageChange_Title"))
-
-            moreActionsMenuTrigger
-        }
-    }
-
-    private var moreActionsMenuTrigger: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isMoreMenuPresented.toggle()
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(isMoreMenuPresented ? AdminSurface.primary : AdminSurface.primaryText)
-                .frame(width: 44, height: 44)
-                .background(isMoreMenuPresented ? AdminSurface.primary.opacity(0.12) : AdminSurface.control, in: Circle())
-                .overlay(Circle().stroke(isMoreMenuPresented ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: 1))
-        }
-        .buttonStyle(AdminLoginPressStyle())
-        .accessibilityLabel(state.localized("CommandCenter_Tab_More"))
-        .background {
-            if isMoreMenuPresented {
-                Color.black.opacity(0.001)
-                    .frame(width: 2500, height: 2500)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            isMoreMenuPresented = false
-                        }
-                    }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if isMoreMenuPresented {
-                customMoreActionsMenuCard
-                    .offset(y: 52)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.88, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                    .zIndex(300)
-            }
-        }
-    }
-
-    private var customMoreActionsMenuCard: some View {
-        VStack(spacing: 0) {
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                state.toggleLanguage()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(state.localized("Confirm_LanguageChange_Title"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "globe")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(AdminLoginPressStyle())
-
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.75)
-                .padding(.horizontal, 12)
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                state.resetPassword()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(state.localized("ForgotPassword"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "key")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(AdminLoginPressStyle())
-        }
-        .frame(width: 220)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-        .shadow(color: Color.black.opacity(0.14), radius: 20, x: 0, y: 10)
-        .environment(\.layoutDirection, state.isRTL ? .rightToLeft : .leftToRight)
-    }
-
-    private var compactIdentity: some View {
-        VStack(spacing: 18) {
-            brandPortal(onBrandSurface: false, diameter: 108)
-
-            VStack(spacing: 8) {
-                Text(state.localized("CommandCenter_Login_Title"))
-                    .font(AdminType.title)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(state.localized("CommandCenter_Login_Subtitle"))
-                    .font(AdminType.callout)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.top, 4)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var identityObservatory: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            staffPulse
-
-            Spacer(minLength: 20)
-
-            brandPortal(onBrandSurface: true, diameter: 164)
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text(state.localized("CommandCenter_Login_Eyebrow"))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(.white.opacity(0.76))
-                    .textCase(.uppercase)
-
-                Text(state.localized("CommandCenter_Login_Title"))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(state.localized("StaffLogin_Brand"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(accent)
+                Text(state.localized(enteringCode ? "StaffLogin_CodeTitle" : "StaffLogin_Title"))
                     .font(AdminType.largeTitle)
-                    .foregroundColor(.white)
                     .fixedSize(horizontal: false, vertical: true)
-
-                Text(state.localized("CommandCenter_Login_Subtitle"))
-                    .font(AdminType.callout)
-                    .foregroundColor(.white.opacity(0.82))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
             }
-
-            Spacer(minLength: 20)
-
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .accessibilityHidden(true)
-                Text(state.localized("CommandCenter_Login_Authority"))
-                    .font(AdminType.callout)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundColor(.white)
-            .accessibilityElement(children: .combine)
-        }
-        .padding(40)
-        .background {
-            RoundedRectangle(cornerRadius: 40, style: .continuous)
-                .fill(AdminSurface.primary)
-                .overlay(alignment: .topTrailing) {
-                    Circle()
-                        .stroke(.white.opacity(0.12), lineWidth: 1)
-                        .frame(width: 280, height: 280)
-                        .offset(x: 92, y: -98)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: 54, style: .continuous)
-                        .stroke(.white.opacity(0.10), lineWidth: 1)
-                        .frame(width: 250, height: 120)
-                        .rotationEffect(.degrees(-19))
-                        .offset(x: -72, y: 68)
-                }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 40, style: .continuous)
-                .stroke(.white.opacity(0.14), lineWidth: 1)
-        )
-        .accessibilityElement(children: .contain)
-    }
-
-    private var staffPulse: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Color.white.opacity(0.92))
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            Text(state.localized("CommandCenter_Staff_Access"))
-        }
-        .font(AdminType.captionBold)
-        .foregroundColor(.white)
-        .padding(.horizontal, 12)
-        .frame(minHeight: 36)
-        .background(.white.opacity(0.12), in: Capsule())
-        .accessibilityElement(children: .combine)
-    }
-
-    private func brandPortal(onBrandSurface: Bool, diameter: CGFloat) -> some View {
-        ZStack {
-            Circle()
-                .stroke((onBrandSurface ? Color.white : AdminSurface.primary).opacity(0.17), lineWidth: 1)
-                .frame(width: diameter, height: diameter)
-
-            Circle()
-                .stroke((onBrandSurface ? Color.white : AdminSurface.primary).opacity(0.12), lineWidth: 1)
-                .frame(width: diameter * 0.76, height: diameter * 0.76)
-
-            Group {
-                if let image = UIImage(named: "pure shelid icon filled") {
-                    Image(uiImage: image)
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Image(systemName: "shield.lefthalf.filled")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                }
-            }
-            .foregroundColor(.white)
-            .frame(width: diameter * 0.40, height: diameter * 0.40)
-            .padding(diameter * 0.16)
-            .background(
-                onBrandSurface ? Color.white.opacity(0.14) : AdminSurface.primary,
-                in: RoundedRectangle(cornerRadius: diameter * 0.23, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: diameter * 0.23, style: .continuous)
-                    .stroke(.white.opacity(onBrandSurface ? 0.20 : 0.16), lineWidth: 1)
-            )
-        }
-        .frame(width: diameter, height: diameter)
-        .accessibilityHidden(true)
-    }
-
-    private var accessCapsule: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            accessCapsuleHeader
-            authModeSwitcher
-            if state.authMode == .phone {
-                phoneAuthSection
-            } else {
-                emailAuthSection
-            }
-            alternativeGate
-            providerActions
-        }
-        .padding(24)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
-        )
-        .shadow(color: AdminSurface.primary.opacity(0.08), radius: 24, y: 12)
-    }
-
-    private var authModeSwitcher: some View {
-        HStack(spacing: 6) {
-            authModeTab(
-                mode: .phone,
-                title: state.localized("LoginWithPhone"),
-                systemImage: "phone.fill"
-            )
-            authModeTab(
-                mode: .email,
-                title: state.localized("LoginWithEmail"),
-                systemImage: "envelope.fill"
-            )
-        }
-        .padding(4)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
-        )
-    }
-
-    private func authModeTab(mode: AdminAuthMode, title: String, systemImage: String) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                state.authMode = mode
-                focusedField = nil
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(title)
+            if state.canUseBiometric {
+                Button {
+                    focus = nil
+                    state.signInWithBiometric()
+                } label: {
+                    HStack(spacing: 9) {
+                        if state.activeAction == .biometric {
+                            ProgressView().accessibilityHidden(true)
+                        } else {
+                            Image(systemName: state.biometricTitle == state.localized("LoginWithTouchID") ? "touchid" : "faceid")
+                                .accessibilityHidden(true)
+                        }
+                        Text(state.biometricTitle)
+                            .multilineTextAlignment(.leading)
+                    }
                     .font(AdminType.calloutBold)
-                    .lineLimit(1)
+                    .frame(minHeight: 44)
+                }
+                .disabled(state.isBusy)
             }
-            .foregroundColor(state.authMode == mode ? .white : AdminSurface.secondaryText)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background(
-                state.authMode == mode ? AdminSurface.primary : Color.clear,
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
         }
         .buttonStyle(.plain)
+        .padding(wide ? 32 : 22)
+        .frame(width: wide ? 280 : nil)
+        .frame(maxWidth: wide ? nil : .infinity, maxHeight: wide ? .infinity : nil, alignment: .leading)
+        .background(Color(uiColor: .ppSurfaceOverlay))
     }
 
-    private var phoneAuthSection: some View {
-        VStack(spacing: 16) {
-            if !state.isCodeSent {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(state.localized("PhoneNumber"), systemImage: "phone")
-                        .font(AdminType.captionBold)
-                        .foregroundColor(focusedField == .phone ? AdminSurface.primary : AdminSurface.secondaryText)
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            methodPicker
+            VStack(alignment: .leading, spacing: 14) {
+                if enteringCode {
+                    codeEntry
+                } else if state.authMode == .phone {
+                    phoneEntry
+                } else {
+                    emailEntry
+                }
+                submitButton
+                if enteringCode { resendControl }
+            }
+            providerMethods
+        }
+        .disabled(state.isBusy)
+    }
+
+    private var methodPicker: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 20))
+        return layout {
+            method(.phone, "PhoneTitle")
+            method(.email, "Email")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func method(_ mode: AdminAuthMode, _ title: String) -> some View {
+        let selected = state.authMode == mode
+        return Button {
+            guard mode != state.authMode else { return }
+            focus = nil
+            state.authMode = mode
+        } label: {
+            Text(state.localized(title))
+                .font(selected ? AdminType.headline : AdminType.body)
+                .foregroundStyle(selected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                .padding(.horizontal, 3)
+                .frame(minWidth: 44, minHeight: 44)
+                .overlay(alignment: .bottom) {
+                    if selected { Capsule().fill(accent).frame(height: 3) }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func field<Content: View>(_ key: String, focus expectedFocus: AdminLoginField,
+                                      @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(state.localized(key))
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .accessibilityHidden(true)
+            content()
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            Rectangle()
+                .fill(focus == expectedFocus ? accent : Color(uiColor: .ppSeparator))
+                .frame(height: focus == expectedFocus ? 2 : 1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var phoneEntry: some View {
+        let includesPrefix = state.phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("+")
+        return field("PhoneNumber", focus: .phone) {
+            HStack(spacing: 10) {
+                if !includesPrefix {
+                    Text(verbatim: state.phoneCountryCode)
+                        .foregroundStyle(AdminSurface.secondaryText)
                         .accessibilityHidden(true)
-
-                    HStack(spacing: 10) {
-                        HStack(spacing: 4) {
-                            Text("🇶🇦")
-                                .font(.system(size: 16))
-                            Text(state.phoneCountryCode)
-                                .font(AdminType.calloutBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                        }
-                        .padding(.horizontal, 10)
-                        .frame(height: 42)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(AdminSurface.hairline, lineWidth: 1)
-                        )
-
-                        TextField(state.localized("PhoneNumberPlaceholder"), text: $state.phoneNumber)
-                            .font(AdminType.body)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .keyboardType(.phonePad)
-                            .textContentType(.telephoneNumber)
-                            .submitLabel(.go)
-                            .focused($focusedField, equals: .phone)
-                            .onSubmit {
-                                focusedField = nil
-                                state.sendPhoneCode()
-                            }
-                    }
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 58)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(focusedField == .phone ? AdminSurface.primary.opacity(0.75) : AdminSurface.hairline, lineWidth: focusedField == .phone ? 1.5 : 1)
-                    )
-                    .shadow(color: focusedField == .phone ? AdminSurface.primary.opacity(0.12) : .clear, radius: 12, y: 4)
+                    Divider().frame(height: 20).accessibilityHidden(true)
                 }
+                TextField(state.localized("PhoneNumberPlaceholder"), text: $state.phoneNumber)
+                    .keyboardType(.phonePad)
+                    .textContentType(.telephoneNumber)
+                    .focused($focus, equals: .phone)
+                    .accessibilityLabel(state.localized("PhoneNumber") + (includesPrefix ? "" : " " + state.phoneCountryCode))
+                    .onSubmit { performPrimaryAction() }
+            }
+            .font(AdminType.title2)
+            .environment(\.layoutDirection, .leftToRight)
+        }
+    }
 
-                Text(state.localized("auth_phone_live_hint"))
-                    .font(AdminType.caption)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    @ViewBuilder private var codeEntry: some View {
+        Text(String(format: state.localized("StaffLogin_CodeDestination"), "\u{2066}" + state.formattedFullPhone + "\u{2069}"))
+            .font(AdminType.callout)
+            .fixedSize(horizontal: false, vertical: true)
+        field("VerificationCode", focus: .verificationCode) {
+            TextField(state.localized("VerificationCodePlaceholder"), text: $state.verificationCode)
+                .font(AdminType.title2)
+                .monospacedDigit()
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .focused($focus, equals: .verificationCode)
+                .environment(\.layoutDirection, .leftToRight)
+                .accessibilityLabel(state.localized("VerificationCode"))
+                .onSubmit { performPrimaryAction() }
+        }
+    }
 
-                Button {
-                    focusedField = nil
-                    state.sendPhoneCode()
-                } label: {
-                    HStack(spacing: 10) {
-                        if state.activeAction == .phoneSendCode {
-                            ProgressView()
-                                .tint(.white)
-                                .accessibilityHidden(true)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .accessibilityHidden(true)
-                        }
-
-                        Text(state.localized("SendVerificationCode"))
-                        Spacer(minLength: 8)
-                        Image(systemName: state.isRTL ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 15, weight: .bold))
-                            .accessibilityHidden(true)
-                    }
-                    .font(AdminType.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 18)
-                    .frame(maxWidth: .infinity, minHeight: 58)
-                    .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, AdminSurface.primaryPressed],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    )
-                    .shadow(color: AdminSurface.primary.opacity(0.24), radius: 14, y: 8)
-                }
-                .buttonStyle(AdminLoginPressStyle())
-                .disabled(state.isBusy)
-                .opacity(state.isBusy && state.activeAction != .phoneSendCode ? 0.55 : 1)
-
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label(state.localized("VerificationCode"), systemImage: "key.fill")
-                            .font(AdminType.captionBold)
-                            .foregroundColor(focusedField == .verificationCode ? AdminSurface.primary : AdminSurface.secondaryText)
-
-                        Spacer()
-
-                        Button {
-                            state.resetPhoneFlow()
-                        } label: {
-                            Text(state.localized("ChangePhoneNumber"))
-                                .font(AdminType.captionBold)
-                                .foregroundColor(AdminSurface.primary)
-                        }
-                    }
-
-                    HStack(spacing: 12) {
-                        Image(systemName: "lock.shield")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(focusedField == .verificationCode ? AdminSurface.primary : AdminSurface.secondaryText)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-
-                        TextField(state.localized("VerificationCodePlaceholder"), text: $state.verificationCode)
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .keyboardType(.numberPad)
-                            .textContentType(.oneTimeCode)
-                            .submitLabel(.go)
-                            .focused($focusedField, equals: .verificationCode)
-                            .onSubmit {
-                                focusedField = nil
-                                state.verifyPhoneCode()
-                            }
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 58)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(focusedField == .verificationCode ? AdminSurface.primary.opacity(0.75) : AdminSurface.hairline, lineWidth: focusedField == .verificationCode ? 1.5 : 1)
-                    )
-                    .shadow(color: focusedField == .verificationCode ? AdminSurface.primary.opacity(0.12) : .clear, radius: 12, y: 4)
-                }
-
-                HStack {
-                    if state.resendCountdown > 0 {
-                        Text(String(format: state.localized("ResendCodeInFormat"), state.resendCountdown))
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
+    @ViewBuilder private var emailEntry: some View {
+        field("Email", focus: .email) {
+            TextField(state.localized("EmailPlaceholder"), text: $state.email)
+                .keyboardType(.emailAddress)
+                .textContentType(.username)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focus, equals: .email)
+                .environment(\.layoutDirection, .leftToRight)
+                .accessibilityLabel(state.localized("Email"))
+                .submitLabel(.next)
+                .onSubmit { focus = .password }
+        }
+        field("Password", focus: .password) {
+            HStack(spacing: 8) {
+                Group {
+                    if state.revealPassword {
+                        TextField(state.localized("PasswordPlaceholder"), text: $state.password)
                     } else {
-                        Button {
-                            state.sendPhoneCode()
-                        } label: {
-                            Text(state.localized("ResendCode"))
-                                .font(AdminType.captionBold)
-                                .foregroundColor(AdminSurface.primary)
-                        }
+                        SecureField(state.localized("PasswordPlaceholder"), text: $state.password)
                     }
-                    Spacer()
                 }
-
+                .textContentType(.password)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focus, equals: .password)
+                .accessibilityLabel(state.localized("Password"))
+                .submitLabel(.go)
+                .onSubmit { performPrimaryAction() }
                 Button {
-                    focusedField = nil
-                    state.verifyPhoneCode()
+                    state.revealPassword.toggle()
+                    focus = .password
                 } label: {
-                    HStack(spacing: 10) {
-                        if state.activeAction == .phoneVerify {
-                            ProgressView()
-                                .tint(.white)
-                                .accessibilityHidden(true)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 19, weight: .semibold))
-                                .accessibilityHidden(true)
-                        }
-
-                        Text(state.localized("VerifyAndLogin"))
-                        Spacer(minLength: 8)
-                        Image(systemName: state.isRTL ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 15, weight: .bold))
-                            .accessibilityHidden(true)
-                    }
-                    .font(AdminType.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 18)
-                    .frame(maxWidth: .infinity, minHeight: 58)
-                    .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, AdminSurface.primaryPressed],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    )
-                    .shadow(color: AdminSurface.primary.opacity(0.24), radius: 14, y: 8)
+                    Image(systemName: state.revealPassword ? "eye.slash" : "eye")
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(width: 44, height: 44)
                 }
-                .buttonStyle(AdminLoginPressStyle())
-                .disabled(state.isBusy)
-                .opacity(state.isBusy && state.activeAction != .phoneVerify ? 0.55 : 1)
+                .buttonStyle(.plain)
+                .accessibilityLabel(state.localized(state.revealPassword ? "CommandCenter_Hide_Password" : "CommandCenter_Show_Password"))
             }
         }
-    }
-
-    private var emailAuthSection: some View {
-        VStack(spacing: 20) {
-            credentialFields
-            metaControls
-            primaryAction
-        }
-    }
-
-    private var accessCapsuleHeader: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "lock.shield.fill")
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 48, height: 48)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(state.localized("AdminLoginTitle"))
-                    .font(AdminType.title2)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(state.localized("ProLoginHint"))
-                    .font(AdminType.callout)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var credentialFields: some View {
-        VStack(spacing: 14) {
-            credentialField(
-                title: state.localized("Email"),
-                symbol: "envelope",
-                isFocused: focusedField == .email
-            ) {
-                TextField(state.localized("EmailPlaceholder"), text: $state.email)
-                    .keyboardType(.emailAddress)
-                    .textContentType(.username)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .submitLabel(.next)
-                    .focused($focusedField, equals: .email)
-                    .onSubmit { focusedField = .password }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            credentialField(
-                title: state.localized("Password"),
-                symbol: "lock",
-                isFocused: focusedField == .password
-            ) {
-                HStack(spacing: 8) {
-                    Group {
-                        if state.revealPassword {
-                            TextField(state.localized("PasswordPlaceholder"), text: $state.password)
-                        } else {
-                            SecureField(state.localized("PasswordPlaceholder"), text: $state.password)
-                        }
-                    }
-                    .textContentType(.password)
-                    .submitLabel(.go)
-                    .focused($focusedField, equals: .password)
-                    .onSubmit {
-                        focusedField = nil
-                        state.submit()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Button(action: { state.revealPassword.toggle() }) {
-                        Image(systemName: state.revealPassword ? "eye.slash" : "eye")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .frame(width: 44, height: 44)
-                            .background(AdminSurface.primary.opacity(state.revealPassword ? 0.10 : 0.001), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(state.localized(state.revealPassword ? "CommandCenter_Hide_Password" : "CommandCenter_Show_Password"))
-                }
-            }
-        }
-    }
-
-    private func credentialField<Content: View>(
-        title: String,
-        symbol: String,
-        isFocused: Bool,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: symbol)
-                .font(AdminType.captionBold)
-                .foregroundColor(isFocused ? AdminSurface.primary : AdminSurface.secondaryText)
-                .accessibilityHidden(true)
-
-            HStack(spacing: 12) {
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(isFocused ? AdminSurface.primary : AdminSurface.secondaryText)
-                    .frame(width: 20)
-                    .accessibilityHidden(true)
-
-                content()
-                    .font(AdminType.body)
-                    .foregroundColor(AdminSurface.primaryText)
-            }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 58)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(isFocused ? AdminSurface.primary.opacity(0.75) : AdminSurface.hairline, lineWidth: isFocused ? 1.5 : 1)
-            )
-            .shadow(color: isFocused ? AdminSurface.primary.opacity(0.12) : .clear, radius: 12, y: 4)
-        }
-    }
-
-    private var metaControls: some View {
-        Group {
-            if sizeCategory.isAccessibilityCategory {
-                VStack(alignment: .leading, spacing: 10) {
-                    rememberMeToggle
-                    passwordRecoveryAction
-                }
-            } else {
-                HStack(spacing: 12) {
-                    rememberMeToggle
-                    Spacer(minLength: 12)
-                    passwordRecoveryAction
-                }
-            }
-        }
-    }
-
-    private var rememberMeToggle: some View {
         Toggle(state.localized("RememberMe"), isOn: $state.rememberMe)
             .font(AdminType.callout)
-            .foregroundColor(AdminSurface.primaryText)
-            .tint(AdminSurface.primary)
             .frame(minHeight: 44)
-    }
-
-    private var passwordRecoveryAction: some View {
-        Button(action: state.resetPassword) {
-            Label(state.localized("ForgotPassword"), systemImage: "key")
-                .font(AdminType.calloutBold)
-                .foregroundColor(AdminSurface.primary)
-                .frame(minHeight: 44)
-        }
-        .buttonStyle(AdminLoginPressStyle())
-        .disabled(state.isBusy)
-    }
-
-    private var primaryAction: some View {
         Button {
-            focusedField = nil
-            state.submit()
+            if state.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { focus = .email }
+            state.resetPassword()
         } label: {
-            HStack(spacing: 10) {
-                if state.activeAction == .email {
-                    ProgressView()
-                        .tint(.white)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: "arrow.forward.circle.fill")
-                        .font(.system(size: 19, weight: .semibold))
-                        .accessibilityHidden(true)
-                }
-
-                Text(state.localized("Login"))
-                Spacer(minLength: 8)
-                Image(systemName: state.isRTL ? "arrow.left" : "arrow.right")
-                    .font(.system(size: 15, weight: .bold))
-                    .accessibilityHidden(true)
+            HStack(spacing: 8) {
+                if state.activeAction == .passwordReset { ProgressView() }
+                Text(state.localized("ForgotPassword"))
             }
-            .font(AdminType.headline)
-            .foregroundColor(.white)
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(
-                LinearGradient(
-                    colors: [AdminSurface.primary, AdminSurface.primaryPressed],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-            )
-            .shadow(color: AdminSurface.primary.opacity(0.24), radius: 14, y: 8)
-        }
-        .buttonStyle(AdminLoginPressStyle())
-        .disabled(state.isBusy)
-        .opacity(state.isBusy && state.activeAction != .email ? 0.55 : 1)
-    }
-
-    private var alternativeGate: some View {
-        HStack(spacing: 12) {
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 1)
-            Image(systemName: "shield.checkered")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(AdminSurface.secondaryText)
-                .accessibilityHidden(true)
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 1)
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var providerActions: some View {
-        VStack(spacing: 12) {
-            Button {
-                focusedField = nil
-                state.signInWithApple()
-            } label: {
-                HStack(spacing: 12) {
-                    Group {
-                        if state.activeAction == .apple {
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                        } else {
-                            Image(systemName: "apple.logo")
-                                .font(.system(size: 19, weight: .semibold))
-                        }
-                    }
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-
-                    Text(state.localized("SignInWithApple"))
-                    Spacer(minLength: 8)
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .accessibilityHidden(true)
-                }
-                .font(AdminType.headline)
-                .foregroundColor(AdminSurface.primaryText)
-                .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 1)
-                )
-            }
-            .buttonStyle(AdminLoginPressStyle())
-            .disabled(state.isBusy)
-
-            Button {
-                focusedField = nil
-                state.signInWithGoogle()
-            } label: {
-                HStack(spacing: 12) {
-                    Group {
-                        if state.activeAction == .google {
-                            ProgressView()
-                                .tint(AdminSurface.primary)
-                        } else {
-                            Text("G")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                        }
-                    }
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-
-                    Text(state.localized("SignInWithGoogle"))
-                    Spacer(minLength: 8)
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .accessibilityHidden(true)
-                }
-                .font(AdminType.headline)
-                .foregroundColor(AdminSurface.primaryText)
-                .padding(.horizontal, 18)
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 1)
-                )
-            }
-            .buttonStyle(AdminLoginPressStyle())
-            .disabled(state.isBusy)
-
-            if state.canUseBiometric {
-                Button(action: state.signInWithBiometric) {
-                    Label(state.biometricTitle, systemImage: "faceid")
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(AdminLoginPressStyle())
-                .disabled(state.isBusy)
-            }
+            .font(AdminType.calloutBold)
+            .frame(minHeight: 44)
         }
     }
 
-    private var securityFootprint: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 9) {
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .accessibilityHidden(true)
-                Text(state.localized("CommandCenter_Login_Authority"))
-                    .font(AdminType.footnote)
-                    .foregroundColor(AdminSurface.secondaryText)
+    private var primaryAction: AdminAuthenticationAction {
+        if enteringCode { return .phoneVerify }
+        return state.authMode == .phone ? .phoneSendCode : .email
+    }
+
+    private func performPrimaryAction() {
+        guard !state.isBusy else { return }
+        focus = nil
+        if enteringCode { state.verifyPhoneCode() }
+        else if state.authMode == .phone { state.sendPhoneCode() }
+        else { state.submit() }
+    }
+
+    private var submitButton: some View {
+        let key = enteringCode ? "VerifyAndLogin" : (state.authMode == .phone ? "SendVerificationCode" : "Login")
+        return Button(action: performPrimaryAction) {
+            HStack(spacing: 12) {
+                Text(state.localized(key))
+                    .font(AdminType.headline)
                     .multilineTextAlignment(.leading)
-            }
-            .frame(maxWidth: 460, alignment: .leading)
-            .accessibilityElement(children: .combine)
-
-            Text(state.localized("CommandCenter_Login_Footer"))
-                .font(AdminType.footnote)
-                .foregroundColor(AdminSurface.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 4)
-    }
-}
-
-private struct AdminLoginAtmosphere: View {
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                AdminSurface.background
-
-                Circle()
-                    .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.20))
-                    .frame(width: max(geometry.size.width * 0.86, 520), height: max(geometry.size.width * 0.86, 520))
-                    .offset(x: geometry.size.width * 0.42, y: -geometry.size.height * 0.42)
-
-                RoundedRectangle(cornerRadius: 96, style: .continuous)
-                    .fill(Color(uiColor: .ppElevatedSurface).opacity(0.60))
-                    .frame(width: max(geometry.size.width * 0.78, 420), height: 180)
-                    .rotationEffect(.degrees(-17))
-                    .offset(x: -geometry.size.width * 0.46, y: geometry.size.height * 0.39)
-
-                VStack(spacing: 10) {
-                    ForEach(0 ..< 7, id: \.self) { _ in
-                        Circle()
-                            .fill(Color(uiColor: .ppTextTertiary).opacity(0.10))
-                            .frame(width: 4, height: 4)
-                    }
+                Spacer(minLength: 0)
+                if state.activeAction == primaryAction {
+                    ProgressView().tint(.white).accessibilityHidden(true)
+                } else {
+                    Image(systemName: "arrow.forward").accessibilityHidden(true)
                 }
-                .offset(x: geometry.size.width * 0.40, y: geometry.size.height * 0.29)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
-        .accessibilityHidden(true)
+        .buttonStyle(.plain)
+        .accessibilityValue(state.activeAction == primaryAction ? state.localized("Please wait") : "")
     }
-}
 
-private struct AdminLoginPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.986 : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.78),
-                value: configuration.isPressed
-            )
+    private var resendControl: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 20) { codeActions.fixedSize(horizontal: true, vertical: false) }
+            VStack(alignment: .leading, spacing: 2) { codeActions }
+        }
+        .font(AdminType.callout)
     }
-}
 
-extension View {
-    @ViewBuilder
-    fileprivate func scrollDismissesKeyboardCompat() -> some View {
-        if #available(iOS 16.0, *) {
-            self.scrollDismissesKeyboard(.interactively)
+    @ViewBuilder private var codeActions: some View {
+        Button(state.localized("ChangePhoneNumber")) {
+            state.resetPhoneFlow()
+            focus = .phone
+        }
+        .frame(minHeight: 44)
+        if state.activeAction == .phoneSendCode {
+            ProgressView().accessibilityLabel(state.localized("ResendCode"))
+        } else if state.resendCountdown > 0 {
+            Text(String(format: state.localized("ResendCodeInFormat"), state.resendCountdown))
+                .monospacedDigit()
+                .foregroundStyle(AdminSurface.secondaryText)
         } else {
-            self
+            Button(state.localized("ResendCode")) {
+                focus = nil
+                state.sendPhoneCode()
+            }
+            .frame(minHeight: 44)
         }
+    }
+
+    private var providerMethods: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(state.localized("StaffLogin_OtherMethods"))
+                .font(AdminType.footnoteBold)
+                .foregroundStyle(AdminSurface.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            provider("SignInWithApple", action: .apple, perform: state.signInWithApple)
+            Divider()
+            provider("SignInWithGoogle", action: .google, perform: state.signInWithGoogle)
+        }
+    }
+
+    private func provider(_ key: String, action: AdminAuthenticationAction,
+                          perform: @escaping () -> Void) -> some View {
+        Button {
+            focus = nil
+            perform()
+        } label: {
+            HStack(spacing: 12) {
+                Text(state.localized(key)).multilineTextAlignment(.leading)
+                Spacer(minLength: 4)
+                if state.activeAction == action {
+                    ProgressView().accessibilityHidden(true)
+                } else {
+                    Image(systemName: "chevron.forward")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(AdminType.calloutBold)
+            .frame(minHeight: 46)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(state.activeAction == action ? state.localized("Please wait") : "")
+    }
+}
+
+// The dashed fold and its two open ends rotate as the pass opens on iPad.
+private struct LoginPassFold: View {
+    let vertical: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+            let start = vertical ? CGPoint(x: middle.x, y: 0) : CGPoint(x: 0, y: middle.y)
+            let end = vertical ? CGPoint(x: middle.x, y: size.height) : CGPoint(x: size.width, y: middle.y)
+            var line = Path()
+            line.move(to: start)
+            line.addLine(to: end)
+            context.stroke(line, with: .color(Color(uiColor: .ppSeparator)),
+                           style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+            for point in [start, end] {
+                let notch = CGRect(x: point.x - 6, y: point.y - 6, width: 12, height: 12)
+                context.fill(Path(ellipseIn: notch), with: .color(AdminSurface.background))
+            }
+        }
+        .frame(width: vertical ? 14 : nil, height: vertical ? nil : 14)
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 }
 
